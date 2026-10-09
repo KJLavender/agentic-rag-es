@@ -29,7 +29,8 @@ services:
       interval: 10s
       retries: 30
 
-  # MCP retrieval server：只有唯讀 key，檔案系統唯讀、非 root、拿掉所有 capability
+  # MCP retrieval server：只有唯讀 key，檔案系統唯讀、非 root、拿掉所有 capability；
+  # rerank 模型在 image 裡（build 時下載），執行時不需要外網
   mcp:
     build:
       context: .
@@ -44,11 +45,7 @@ services:
       - ES_URL=http://elasticsearch:9200
       - ES_SEARCH_API_KEY=${ES_SEARCH_API_KEY:-}
       - OLLAMA_URL=http://host.docker.internal:11434
-      # rerank 模型在 MCP server 裡跑，第一次用到時下載到 volume
-      - RERANK_CACHE=/app/data/models
     extra_hosts: ["host.docker.internal:host-gateway"]
-    volumes:
-      - models:/app/data/models
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -85,4 +82,3 @@ services:
 volumes:
   esdata:
   appdata:
-  models:

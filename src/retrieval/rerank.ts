@@ -1,6 +1,7 @@
 /**
  * Cross-encoder rerank：query 和每個片段一起送進模型打分，比 embedding 的「各算各的向量」準，但比較慢。
- * 用 transformers.js 在 Node 裡跑 ONNX（CPU），不佔 Ollama 的 GPU。第一次會下載模型（int8 約 280MB）。
+ * 用 transformers.js 在 Node 裡跑 ONNX（CPU），不佔 Ollama 的 GPU。本機第一次用會下載模型（int8 約 280MB）；
+ * Docker image 在 build 時就下載好，執行時設 RERANK_OFFLINE=1，MCP 容器完全不需要外網。
  */
 import { AutoModelForSequenceClassification, AutoTokenizer, env } from "@huggingface/transformers";
 import type { Hit } from "./search.js";
@@ -8,6 +9,7 @@ import type { Hit } from "./search.js";
 // 比大小兩個模型（scripts/eval-rerank.ts）：base 在調整組、驗收組都比 v2-m3（int8）準，而且快 2～3 倍
 const MODEL = process.env.RERANK_MODEL ?? "Xenova/bge-reranker-base";
 env.cacheDir = process.env.RERANK_CACHE ?? ".cache/models";
+if (process.env.RERANK_OFFLINE === "1") env.allowRemoteModels = false;
 
 let loaded: Promise<{ tokenizer: Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>; model: Awaited<ReturnType<typeof AutoModelForSequenceClassification.from_pretrained>> }> | null = null;
 
@@ -17,6 +19,11 @@ function load() {
     model: await AutoModelForSequenceClassification.from_pretrained(MODEL, { dtype: "q8" }),
   }))();
   return loaded;
+}
+
+/** 先把模型下載／載入好（Docker build 時用，也可以拿來暖機）。 */
+export async function preloadReranker(): Promise<void> {
+  await load();
 }
 
 const BATCH = 8;

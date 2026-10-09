@@ -6,20 +6,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npx vite build && npm prune --omit=dev
+# rerank 模型在 build 時下載進 image：執行時 MCP 容器不需要外網
+RUN npx vite build && RERANK_CACHE=/app/models npx tsx scripts/fetch-rerank-model.ts && npm prune --omit=dev
 
 FROM node:22-bookworm-slim
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production RERANK_CACHE=/app/models RERANK_OFFLINE=1
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/web/dist web/dist
+COPY --from=build /app/models models
 COPY src src
 COPY scripts scripts
 COPY corpus corpus
 COPY eval eval
-# SQLite 和 rerank 模型快取放在 volume；先建好目錄給 node 使用者
-RUN mkdir -p /app/data/models && chown -R node:node /app/data
+# SQLite 放在 volume；先建好目錄給 node 使用者
+RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8787 8788
 CMD ["node", "--import", "tsx", "src/server/index.ts"]

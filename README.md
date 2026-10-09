@@ -182,7 +182,7 @@ Each layer assumes the one above it has failed.
 | Input | Decision layer: rules, domain similarity, typed decision | off-topic use, direct injection |
 | Content | Retrieved text is wrapped as data and the prompt says it is not instructions; [a trap document](corpus/zz-injection-test.md) tests this | indirect prompt injection |
 | Output | Citation check | invented sources |
-| Process | Docker: read-only filesystem, non-root, `cap_drop: ALL`, `no-new-privileges`; HTTP MCP requires a bearer token | blast radius |
+| Process | Docker: read-only filesystem, non-root, `cap_drop: ALL`, `no-new-privileges`; HTTP MCP requires a bearer token; the rerank model is baked into the image so the MCP container needs no internet access at runtime | blast radius |
 | Audit | Every MCP call (who, query, returned ids) is stored in SQLite | after-the-fact review |
 | Upload | Admin only; the ACL can only name groups the uploader belongs to; frontmatter `acl` in uploaded files is ignored | privilege escalation through upload |
 
@@ -270,7 +270,7 @@ docs/plan.md     original plan (Traditional Chinese)
 - **Small evaluation.** 24 test questions on one corpus is a method demonstration, not a benchmark. The LLM judge is itself a model; its notes are in `results/` for review.
 - **One GPU, one question at a time.** Requests queue.
 - **Elasticsearch over plain HTTP** on localhost. Enable TLS before exposing it.
-- **Rerank runs on CPU** and adds about a second per retrieval round; the first use downloads the model (~280 MB).
+- **Rerank runs on CPU** and adds about a second per retrieval round. Locally the first use downloads the model (~280 MB); the Docker image ships with it.
 
 ## License
 
