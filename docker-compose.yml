@@ -1,0 +1,28 @@
+name: agentic-rag-es
+
+services:
+  elasticsearch:
+    build:
+      context: .
+      dockerfile: docker/elasticsearch.Dockerfile
+      # WSL 的 bridge 網路在 build 時連不到 artifacts.elastic.co
+      network: host
+    image: agentic-rag-es/elasticsearch:9.5.5
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      # 本機實驗用 HTTP；對外開放前要開 TLS
+      - xpack.security.http.ssl.enabled=false
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in .env}
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:$$ELASTIC_PASSWORD http://localhost:9200/_cluster/health | grep -qE 'green|yellow'"]
+      interval: 10s
+      retries: 30
+
+volumes:
+  esdata:
