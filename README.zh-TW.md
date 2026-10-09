@@ -175,7 +175,7 @@ rerank 分數也能當相關性訊號：門檻 0.5 時保留 96% 的標準片段
 | 輸入 | 決策層：規則、領域相似度、typed decision | 拿來做別的事、直接 injection |
 | 內容 | 檢索內容包成資料區塊，prompt 明說不是指令；用[陷阱文件](corpus/zz-injection-test.md)測試 | 間接 prompt injection |
 | 輸出 | 引用查核 | 編造來源 |
-| 程序 | Docker：唯讀檔案系統、非 root、`cap_drop: ALL`、`no-new-privileges`；HTTP 模式的 MCP 要 Bearer token | 爆炸半徑 |
+| 程序 | Docker：唯讀檔案系統、非 root、`cap_drop: ALL`、`no-new-privileges`；HTTP 模式的 MCP 要 Bearer token；rerank 模型在 build 時就放進 image，MCP 容器執行時不需要外網 | 爆炸半徑 |
 | 稽核 | 每次 MCP 呼叫（誰、查什麼、回了哪些片段）都存進 SQLite | 事後追查 |
 | 上傳 | 只有 admin；acl 只能選自己有的群組；上傳檔案裡的 frontmatter `acl` 不採信 | 透過上傳提權 |
 
@@ -263,7 +263,7 @@ docs/plan.md     原始計畫
 - **評測規模小。** 單一語料、驗收組 24 題是方法示範，不是 benchmark。LLM 評審本身也是模型，它的評語都留在 `results/` 供複核。
 - **一張 GPU，一次一題。** 其他請求會排隊。
 - **Elasticsearch 走 HTTP**，只開在 localhost。對外開放前要開 TLS。
-- **Rerank 在 CPU 上跑**，每輪檢索多約 1 秒；第一次使用會下載模型（約 280MB）。
+- **Rerank 在 CPU 上跑**，每輪檢索多約 1 秒。本機第一次使用會下載模型（約 280MB）；Docker image 已經內建。
 
 ## 授權
 
