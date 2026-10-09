@@ -140,7 +140,7 @@ export function App() {
           </label>
           <label className="check">
             <input type="checkbox" checked={settings.rerank} onChange={(e) => updateSettings({ rerank: e.target.checked })} />
-            Cross-encoder rerank（較準，每題多幾秒）
+            Cross-encoder rerank（較準，每題多 1～2 秒）
           </label>
           <label className="check">
             <input type="checkbox" checked={settings.showTrace} onChange={(e) => updateSettings({ showTrace: e.target.checked })} />

@@ -51,18 +51,20 @@ export function createRetrievalServer(): McpServer {
       description:
         "在知識庫裡搜尋相關片段。mode：keyword（BM25 關鍵字，適合專有名詞、指令、檔名）、" +
         "vector（語意相近，適合口語問題）、hybrid（兩者用 RRF 融合，通常最穩）、" +
-        "cascade（先嚴格關鍵字，不夠再用語意補）。回傳片段 id、標題、章節、來源與內容。",
+        "cascade（先嚴格關鍵字，不夠再用語意補）。rerank=true 會先多撈候選，再用 cross-encoder 重排（較準，多 1～2 秒）。" +
+        "回傳片段 id、標題、章節、來源與內容。",
       inputSchema: {
         mode: z.enum(MODES).default("hybrid"),
         query: z.string().min(1).max(500),
         k: z.number().int().min(1).max(20).default(5),
+        rerank: z.boolean().default(false),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ mode, query, k }, extra) => {
+    async ({ mode, query, k, rerank }, extra) => {
       const groups = groupsFrom(extra._meta);
-      const hits = await search(es, { mode, query, k, groups });
-      audit("search", { mode, query, k }, groups, hits.map((h) => h.chunk_id));
+      const hits = await search(es, { mode, query, k, groups, rerank });
+      audit("search", { mode, query, k, rerank }, groups, hits.map((h) => h.chunk_id));
       return reply(hits);
     },
   );

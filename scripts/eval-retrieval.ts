@@ -3,7 +3,7 @@
  *
  *   npm run eval:retrieval                 # 調整組
  *   npm run eval:retrieval -- --split test # 驗收組（從不拿來調參數）
- *   npm run eval:retrieval -- --rerank     # 多跑一組「hybrid + cross-encoder rerank」
+ *   npm run eval:retrieval -- --rerank     # 每種模式再多跑一組「+ cross-encoder rerank」
  *
  * 相關片段的定義：內容包含 golden.json 裡 evidence.text 的片段。切塊策略改了也能公平比較。
  */
@@ -23,11 +23,10 @@ const relevant = await relevantIds(es, golden.questions);
 type Variant = { name: string; run: (q: string, groups: string[]) => Promise<Hit[]> };
 const variants: Variant[] = MODES.map((mode: Mode) => ({ name: mode, run: (q, groups) => search(es, { mode, query: q, k: K, groups }) }));
 if (withRerank) {
-  const { rerank } = await import("../src/retrieval/rerank.js");
-  variants.push({
-    name: "hybrid+rerank",
-    run: async (q, groups) => rerank(q, await search(es, { mode: "hybrid", query: q, k: 20, groups }), K),
-  });
+  // 每種模式都可以加 rerank：第一段撈 RERANK_CANDIDATES 筆，cross-encoder 重排後取前 K
+  for (const mode of MODES) {
+    variants.push({ name: `${mode}+rerank`, run: (q, groups) => search(es, { mode, query: q, k: K, groups, rerank: true }) });
+  }
 }
 
 interface Row { name: string; hit1: number; hit3: number; hit5: number; mrr: number; ms: number; misses: string[] }
