@@ -18,7 +18,8 @@ export const config = {
   esSearchApiKey: process.env.ES_SEARCH_API_KEY ?? "",
 
   ollamaUrl: env("OLLAMA_URL", "http://127.0.0.1:11434"),
-  llmModel: env("LLM_MODEL", "qwen3.5:4b"),
+  /** npm run setup:model 從 LLM_BASE_MODEL 建出來的 16k context 變體；決策、評審、生成共用，GPU 只載一份。 */
+  llmModel: env("LLM_MODEL", "rag-qwen3.5-4b"),
   llmNumCtx: num("LLM_NUM_CTX", 16384),
   llmTimeoutMs: num("LLM_TIMEOUT_MS", 120_000),
   embedModel: env("EMBED_MODEL", "bge-m3"),
@@ -30,8 +31,10 @@ export const config = {
 
   /** hybrid 的 RRF 裡 BM25 那一路的權重（向量那一路是 1）。 */
   hybridKeywordWeight: num("HYBRID_KEYWORD_WEIGHT", 0.3),
-  /** 決策層：問題跟語料最像的片段低於這個 cosine 相似度，視為範圍外（用 eval 調整組定）。 */
-  domainMinSimilarity: num("DOMAIN_MIN_SIMILARITY", 0.45),
+  /** 決策層：問題跟語料最像的片段低於這個 cosine 相似度，視為範圍外。調整組實測：正常問題最低 0.61、範圍外最高 0.50。 */
+  domainMinSimilarity: num("DOMAIN_MIN_SIMILARITY", 0.55),
+  /** LLM 說範圍外、但相似度高於這個值：以檢索為準，還是去查（不適用 injection）。 */
+  domainStrongSimilarity: num("DOMAIN_STRONG_SIMILARITY", 0.65),
   /** 決策層：LLM 信心低於這個值就請使用者澄清，不進 agent。 */
   decisionMinConfidence: num("DECISION_MIN_CONFIDENCE", 0.5),
   /** CRAG：context 不夠時最多重查幾次。 */
