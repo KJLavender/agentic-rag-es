@@ -1,0 +1,16 @@
+node_modules/
+dist/
+web/dist/
+# 執行期資料：SQLite、模型快取、評測結果
+data/
+results/
+.cache/
+# 機密
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+.DS_Store
+Thumbs.db

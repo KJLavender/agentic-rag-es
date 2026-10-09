@@ -1,0 +1,53 @@
+{
+  "name": "agentic-rag-es",
+  "version": "0.1.0",
+  "description": "Full-stack agentic RAG on Elasticsearch: four retrieval modes behind a read-only MCP server, a decision layer, a Pi agent, cited answers, local Ollama.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "es:setup": "tsx scripts/setup-es.ts",
+    "ingest": "tsx scripts/ingest.ts",
+    "mcp": "tsx src/mcp/main.ts",
+    "dev:server": "tsx watch src/server/index.ts",
+    "dev:web": "vite",
+    "start": "tsx src/server/index.ts",
+    "build:web": "vite build",
+    "ask": "tsx scripts/ask.ts",
+    "eval:retrieval": "tsx scripts/eval-retrieval.ts",
+    "eval:e2e": "tsx scripts/eval-e2e.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^9.5.1",
+    "@huggingface/transformers": "^4.3.1",
+    "@mariozechner/pi-agent-core": "^0.73.1",
+    "@mariozechner/pi-ai": "^0.73.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ai": "^7.0.136",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.5",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@ai-sdk/react": "^4.0.139",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  },
+  "overrides": {
+    "basic-ftp": "^6.2.1"
+  }
+}
