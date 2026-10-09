@@ -4,11 +4,11 @@ import type { ReactNode } from "react";
  * 很小的 Markdown 子集（粗體、行內程式碼、條列、標題、引用 id），直接產生 React 節點。
  * 不用 dangerouslySetInnerHTML：回答的內容來自模型和文件，都當成不可信。
  */
-const CITE_ID = /^[a-z0-9][a-z0-9-]*#\d+$/;
+const CITE_ID = /^[a-z0-9][a-z0-9-]*#\d+$/i;
 
 function inline(text: string, cite: (id: string) => ReactNode, key: string): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|\[?[a-z0-9][a-z0-9-]*#\d+\]?)/g;
+  const re = /(\*\*[^*]+\*\*|`[^`]+`|\[?(?<![\w-])[a-z0-9][a-z0-9-]*#\d+\]?)/gi;
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;
@@ -20,8 +20,8 @@ function inline(text: string, cite: (id: string) => ReactNode, key: string): Rea
     else if (tok.startsWith("`")) {
       // `aiops#12` 這種包在 code 裡的引用也當引用
       const inner = tok.slice(1, -1);
-      out.push(CITE_ID.test(inner) ? <span key={k}>{cite(inner)}</span> : <code key={k}>{inner}</code>);
-    } else out.push(<span key={k}>{cite(tok.replace(/^\[|\]$/g, ""))}</span>);
+      out.push(CITE_ID.test(inner) ? <span key={k}>{cite(inner.toLowerCase())}</span> : <code key={k}>{inner}</code>);
+    } else out.push(<span key={k}>{cite(tok.replace(/^\[|\]$/g, "").toLowerCase())}</span>);
     last = m.index + tok.length;
   }
   if (last < text.length) out.push(text.slice(last));

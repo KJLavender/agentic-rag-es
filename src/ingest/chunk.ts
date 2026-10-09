@@ -133,7 +133,7 @@ export function chunkMarkdown(body: string, title: string, maxChars = 600, overl
     }
     if (buf) parts.push(buf);
     for (const content of parts) {
-      if (content.replace(/\s/g, "").length < 15) continue; // 只有分隔線、空白的段落
+      if (meaningfulLength(content) < 15) continue; // 只有分隔線、徽章、圖片、HTML 的段落
       chunks.push({ headingPath, content: content.trim(), position: chunks.length });
     }
   }

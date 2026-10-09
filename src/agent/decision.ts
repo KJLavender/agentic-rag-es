@@ -52,8 +52,12 @@ const INJECTION_PATTERNS = [
   /\/etc\/passwd|\.\.\/\.\.\/|rm\s+-rf|curl\s+[^|]+\|\s*(sh|bash)/i,
 ];
 
+// 單純打招呼／道謝：跟語料一定不像，不先攔下來會被領域相似度當成範圍外（驗收組 t14 發現的）
+const GREETING = /^\s*(嗨|哈囉|hello|hi|hey|你好|您好|早安|午安|晚安|謝謝|感謝|thanks?)[\s!！~～。,，、]*(你好|您好|呀|啊|喔)?[\s!！~～。]*$/i;
+
 export function ruleCheck(question: string): Omit<DecisionResult, "decision"> | null {
   if (question.trim().length > 500) return { stage: "rules", proceed: false, reply: REPLIES.too_long, reason: "超過 500 字" };
+  if (GREETING.test(question)) return { stage: "rules", proceed: false, reply: REPLIES.chitchat, reason: "打招呼" };
   const hit = INJECTION_PATTERNS.find((p) => p.test(question));
   if (hit) return { stage: "rules", proceed: false, reply: REPLIES.injection, reason: `符合規則 ${hit.source.slice(0, 40)}` };
   return null;
@@ -104,7 +108,10 @@ export async function decide(question: string, history: Turn[], retrieval: Retri
   const fallback: Decision = { intent: "rag_question", confidence: 1, standalone_query: q, query_variants: [], suggested_mode: "hybrid" };
 
   const rule = ruleCheck(q);
-  if (rule) return { ...rule, decision: { ...fallback, intent: rule.reply === REPLIES.injection ? "injection" : "unclear" } };
+  if (rule) {
+    const intent = rule.reply === REPLIES.injection ? "injection" : rule.reply === REPLIES.chitchat ? "chitchat" : "unclear";
+    return { ...rule, decision: { ...fallback, intent } };
+  }
 
   // 第二段：問題跟語料像不像。追問（「那南區呢？」）單看字面一定不像，所以有上文時改在 LLM 改寫後再檢查。
   const nearest = (text: string) => retrieval.search("vector", text, 3, groups);

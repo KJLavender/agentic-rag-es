@@ -27,7 +27,7 @@ if (!(await es.indices.exists({ index: config.esIndex }))) {
 }
 
 const keys: Record<string, { name: string; privileges: string[] }> = {
-  ES_INGEST_API_KEY: { name: "rag-ingest", privileges: ["read", "write", "view_index_metadata"] },
+  ES_INGEST_API_KEY: { name: "rag-ingest", privileges: ["read", "write", "view_index_metadata", "maintenance"] },
   // MCP retrieval server 用：只能讀這一個 index
   ES_SEARCH_API_KEY: { name: "rag-search", privileges: ["read"] },
 };
