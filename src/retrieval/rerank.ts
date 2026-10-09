@@ -6,7 +6,7 @@ import { AutoModelForSequenceClassification, AutoTokenizer, env } from "@hugging
 import type { Hit } from "./search.js";
 
 const MODEL = process.env.RERANK_MODEL ?? "onnx-community/bge-reranker-v2-m3-ONNX";
-env.cacheDir = ".cache/models";
+env.cacheDir = process.env.RERANK_CACHE ?? ".cache/models";
 
 let loaded: Promise<{ tokenizer: Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>; model: Awaited<ReturnType<typeof AutoModelForSequenceClassification.from_pretrained>> }> | null = null;
 

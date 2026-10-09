@@ -1,5 +1,12 @@
 # 全端 Agentic RAG 實作計畫
 
+> **實作狀態（2026-10-09）**：P0～P5 已完成，結果見 [README](../README.zh-TW.md)。跟計畫不同的地方：
+> - 中文分詞改用 **ICU tokenizer + 繁轉簡**：實測 smartcn 只認簡體，繁體一樣逐字切。
+> - 前端串流用 AI SDK `useChat`，後端仍是 Pi agent，把 Pi 的事件轉成 AI SDK 的 UI message stream。
+> - 生成層評測沒有用 promptfoo，改成自己寫的評測腳本（`scripts/eval-e2e.ts`），用 qwen3.5:9b 當評審，陷阱題用規則判分；理由是少一個大型相依套件，也跟 japan-trip-bot 的評測方式一致。
+> - 標準答案改標「證據句子」而不是片段 id，改切塊策略時標註不會失效。
+> - 「IKEA 有權限才回、沒權限保留檔名遮內文」沒有做：目前沒權限的文件完全看不到（連檔名都不透露）。
+
 > 建立日期：2026-10-09(同日修訂：加入市場參考、授權/中文坑、決策層、權限、儲存)
 > Stack：TS 前後端 + Elasticsearch + Agent(Pi SDK) + MCP + Embedding + LLM + SQLite
 > 目標：從 ingestion 到評測,**整條自己做一遍**。不是 naive RAG,是 agent 會自己選檢索策略、檢查夠不夠、不夠再查的 Agentic RAG,而且**只做 RAG、不做別的事**。

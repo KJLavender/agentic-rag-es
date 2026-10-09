@@ -28,8 +28,8 @@ function collect(message: RagUIMessage) {
     else if (p.type === "data-retrieval") rounds.push(p.data);
     else if (p.type === "data-tool") tools.push(p.data);
   }
-  // 查核移除了編造的來源時，顯示清理過的版本
-  if (verify?.invalid.length) text = verify.answer;
+  // 查核完就顯示清理過的版本（移除編造的來源、id 大小寫統一）
+  if (verify) text = verify.answer;
   return { text, decision, sources, verify, rounds, tools };
 }
 
