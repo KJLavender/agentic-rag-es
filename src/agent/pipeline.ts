@@ -63,17 +63,6 @@ function fuse(lists: Passage[][]): Passage[] {
   return [...merged.values()].sort((a, b) => b.fused - a.fused);
 }
 
-async function maybeRerank(query: string, passages: Passage[], on: boolean, k: number): Promise<Passage[]> {
-  if (!on || passages.length <= 1) return passages.slice(0, k);
-  const { rerank } = await import("../retrieval/rerank.js");
-  const ranked = await rerank(
-    query,
-    passages.map((p) => ({ ...p, heading_path: p.section })),
-    k,
-  );
-  return ranked.map(({ heading_path: _h, ...p }) => p);
-}
-
 /**
  * 整條流程由程式的狀態機控制，LLM 只做窄任務：
  *   決策 → 檢索 → 評審夠不夠 →（不夠就換查詢/模式再查，最多 N 輪）→ 生成 → 引用查核
@@ -117,14 +106,17 @@ export async function runPipeline(
   t = Date.now();
   let pool: Passage[] = [];
   let context: Passage[] = [];
-  let queries = [standalone, ...variants];
+  // rerank 在 MCP server 裡做（撈 20 筆候選再重排）。開 rerank 時只查主查詢：
+  // 候選夠多、召回率已經夠（驗收組 Hit@5 100%），每個變體都 rerank 只會讓 CPU 時間翻倍
+  let queries = settings.rerank ? [standalone] : [standalone, ...variants];
   const tried = new Set<string>();
   for (let round = 1; round <= config.maxRetrievalRounds + 1; round++) {
-    emit({ type: "status", text: `第 ${round} 輪檢索（${mode}）：${queries[0]}` });
+    emit({ type: "status", text: `第 ${round} 輪檢索（${mode}${settings.rerank ? " + rerank" : ""}）：${queries[0]}` });
     queries.forEach((q) => tried.add(`${mode}|${q}`));
-    const lists = await Promise.all(queries.map((q) => retrieval.search(mode, q, config.contextK + 2, input.groups)));
+    const k = settings.rerank ? config.contextK : config.contextK + 2;
+    const lists = await Promise.all(queries.map((q) => retrieval.search(mode, q, k, input.groups, settings.rerank)));
     pool = fuse([pool, ...lists]);
-    const candidates = await maybeRerank(standalone, pool.slice(0, settings.rerank ? 20 : config.contextK), settings.rerank, config.contextK);
+    const candidates = pool.slice(0, config.contextK);
     const r: RetrievalRound = {
       round,
       mode,

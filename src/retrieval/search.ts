@@ -28,6 +28,8 @@ export interface SearchParams {
   k?: number;
   /** 呼叫者的群組。由 server 端帶入，不是 LLM 給的。 */
   groups: string[];
+  /** 第一段撈 RERANK_CANDIDATES 筆，再用 cross-encoder 重排。可以搭配任何模式。 */
+  rerank?: boolean;
 }
 
 const SOURCE: (keyof ChunkDoc)[] = ["chunk_id", "doc_id", "title", "source", "heading_path", "content", "position"];
@@ -117,6 +119,15 @@ export async function search(es: Client, p: SearchParams): Promise<Hit[]> {
   const k = Math.min(Math.max(p.k ?? 5, 1), 20);
   const q = p.query.trim().slice(0, 500);
   if (!q) return [];
+  if (!p.rerank) return firstStage(es, p.mode, q, k, p.groups);
+  // 兩段式：先用任一模式撈較多候選，再用 cross-encoder 重排取前 k。模型只在用到時才載入。
+  const candidates = await firstStage(es, p.mode, q, Math.max(k, config.rerankCandidates), p.groups);
+  const { rerank } = await import("./rerank.js");
+  return rerank(q, candidates, k);
+}
+
+async function firstStage(es: Client, mode: Mode, q: string, k: number, groups: string[]): Promise<Hit[]> {
+  const p = { mode, groups };
   switch (p.mode) {
     case "keyword":
       return keyword(es, q, k, p.groups);

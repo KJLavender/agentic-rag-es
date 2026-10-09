@@ -2,7 +2,7 @@ name: agentic-rag-es
 
 # 只起 ES（開發用）：docker compose up -d
 # 全部起：docker compose --env-file .env --env-file .env.local --profile app up -d --build
-# （.env 放 ELASTIC_PASSWORD / MCP_TOKEN，.env.local 是 npm run es:setup 產生的兩把 API key）
+# （.env 放 ELASTIC_PASSWORD / MCP_TOKEN，.env.local 是 npm run es:setup 產生的兩把 API key；缺了的話容器啟動時會報錯）
 # Ollama 跑在宿主機（要 GPU），容器透過 host.docker.internal 連過去。
 
 services:
@@ -40,11 +40,15 @@ services:
     environment:
       - RAG_NO_ENV_FILE=1
       - MCP_HTTP_PORT=8788
-      - MCP_TOKEN=${MCP_TOKEN:?set MCP_TOKEN in .env}
+      - MCP_TOKEN=${MCP_TOKEN:-}
       - ES_URL=http://elasticsearch:9200
-      - ES_SEARCH_API_KEY=${ES_SEARCH_API_KEY:?run npm run es:setup first}
+      - ES_SEARCH_API_KEY=${ES_SEARCH_API_KEY:-}
       - OLLAMA_URL=http://host.docker.internal:11434
+      # rerank 模型在 MCP server 裡跑，第一次用到時下載到 volume
+      - RERANK_CACHE=/app/data/models
     extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - models:/app/data/models
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -61,12 +65,11 @@ services:
       - RAG_NO_ENV_FILE=1
       - HOST=0.0.0.0
       - MCP_URL=http://mcp:8788/mcp
-      - MCP_TOKEN=${MCP_TOKEN}
+      - MCP_TOKEN=${MCP_TOKEN:-}
       - ES_URL=http://elasticsearch:9200
-      - ES_INGEST_API_KEY=${ES_INGEST_API_KEY:?run npm run es:setup first}
+      - ES_INGEST_API_KEY=${ES_INGEST_API_KEY:-}
       - OLLAMA_URL=http://host.docker.internal:11434
       - DB_PATH=/app/data/app.sqlite
-      - RERANK_CACHE=/app/data/models
     extra_hosts: ["host.docker.internal:host-gateway"]
     ports:
       - "127.0.0.1:8787:8787"
@@ -82,3 +85,4 @@ services:
 volumes:
   esdata:
   appdata:
+  models:

@@ -19,7 +19,7 @@ COPY scripts scripts
 COPY corpus corpus
 COPY eval eval
 # SQLite 和 rerank 模型快取放在 volume；先建好目錄給 node 使用者
-RUN mkdir -p /app/data && chown node:node /app/data
+RUN mkdir -p /app/data/models && chown -R node:node /app/data
 USER node
 EXPOSE 8787 8788
 CMD ["node", "--import", "tsx", "src/server/index.ts"]

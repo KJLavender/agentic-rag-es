@@ -66,8 +66,8 @@ export class RetrievalClient {
     return (JSON.parse(text) as { results: Passage[] }).results;
   }
 
-  search(mode: Mode, query: string, k: number, groups: string[]) {
-    return this.call("search", { mode, query, k }, groups);
+  search(mode: Mode, query: string, k: number, groups: string[], rerank = false) {
+    return this.call("search", { mode, query, k, rerank }, groups);
   }
 
   getDocument(id: string, groups: string[]) {

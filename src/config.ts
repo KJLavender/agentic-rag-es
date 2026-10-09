@@ -31,6 +31,8 @@ export const config = {
 
   /** hybrid 的 RRF 裡 BM25 那一路的權重（向量那一路是 1）。 */
   hybridKeywordWeight: num("HYBRID_KEYWORD_WEIGHT", 0.3),
+  /** rerank 時第一段撈幾筆候選。驗收組：20 筆比 10 筆 MRR 高約 0.02，多 0.8 秒。 */
+  rerankCandidates: num("RERANK_CANDIDATES", 20),
   /** 決策層：問題跟語料最像的片段低於這個 cosine 相似度，視為範圍外。調整組實測：正常問題最低 0.61、範圍外最高 0.50。 */
   domainMinSimilarity: num("DOMAIN_MIN_SIMILARITY", 0.55),
   /** LLM 說範圍外、但相似度高於這個值：以檢索為準，還是去查（不適用 injection）。 */
