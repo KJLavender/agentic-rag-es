@@ -26,6 +26,7 @@
 
 - [功能](#功能)
 - [架構](#架構)
+- [PDF、PowerPoint 與證據截圖](#pdfpowerpoint-與證據截圖)
 - [評測](#評測)
 - [設計取捨](#設計取捨)
 - [安全模型](#安全模型)
@@ -36,7 +37,7 @@
 
 ## 功能
 
-對一批文件提問（內建語料是我其他公開專案的繁體中文文件）。每個回答都根據檢索到的片段、附上來源；
+對一批文件提問，支援 Markdown、**PDF、PowerPoint、Word**。內建語料是我其他公開專案的繁體中文文件，加上產生的測試用 SOP 和簡報。每個回答都根據檢索到的片段、附上來源；
 查不到就說「沒有相關資料」，不會用猜的。
 
 - **四種檢索模式**，查同一個索引：`keyword`（BM25）、`vector`（kNN）、
@@ -45,6 +46,8 @@
 - **CRAG 迴圈由程式控制，不交給模型**：檢索 → 評審「夠不夠回答」→ 換查詢、換沒試過的模式再查 → 生成，或 fail-closed。
 - **Pi agent**（`@mariozechner/pi-agent-core`）只有兩個透過 MCP 的唯讀工具，呼叫次數有硬上限。
 - **引用查核**：回答裡引用的每個片段 id，都必須是這一輪真的檢索到的；編造的來源會被移除並標 ⚠。
+- **看得到的證據**：引用到的 PDF／PPT 片段都會附上那一頁的截圖、把用到的那幾行框起來，再加上引用原文和「開啟原文第 N 頁」的連結。
+- **SOP 格式**：「要怎麼做」的問題用 摘要 → 前置條件 → 照原文順序的全部步驟（每步附來源）→ 注意事項 回答，並自動補進前後片段，避免跨頁的步驟被漏掉。
 - **文件級權限（ACL）**在 MCP server 的 Elasticsearch 查詢裡強制套用，不靠 LLM 判斷。
 - **聊天介面**：串流回答、編號引用、來源卡、過程面板（決策、每一輪檢索、評審結果、工具呼叫）、
   對話紀錄、設定、👍/👎、文件上傳。
@@ -76,7 +79,35 @@ Elasticsearch 9.5（Basic 授權）
  metadata：標題、章節路徑、來源、acl
    ▲
 Ingestion：Markdown → 依標題切塊 →「文件 > 章節」前綴 → embedding → upsert
+           PDF / PPTX / DOCX →（LibreOffice 轉 PDF）→ 逐頁抽出每一行與位置 + 每頁截圖 → 切塊
 ```
+
+## PDF、PowerPoint 與證據截圖
+
+![證據卡：用到的原文標黃，頁面截圖上框出位置](docs/images/evidence.png)
+
+**灌資料。** PPTX、DOCX 先用 LibreOffice（headless）轉成 PDF，所以所有格式走同一條路：用 `pdfjs-dist` 逐頁抽出
+**每一行文字和它在頁面上的位置**，每一頁渲染成 JPEG。一張投影片是一塊，標題是「投影片 N｜投影片標題」；
+PDF 依長度切塊，字比內文大的短行當成章節標題（「5. 資料還原步驟（第 2 頁）」）。每一行的位置存在片段的
+`layout`（不建索引），只有 backend 在 `_meta` 要求時 MCP server 才回傳。
+
+**回答裡的證據。** 每個被引用的片段在介面上都有一張證據卡：文件、頁碼或投影片編號、引用的原文（回答真正用到的
+那幾行標黃，用「引用這個片段的句子」跟每一行的字詞重疊來判斷），以及框出那幾行的頁面截圖。截圖和原始檔都要先由
+backend 透過 MCP 確認這個使用者看得到這份文件才會給，沒權限就連截圖都拿不到。
+
+**SOP 回答。** 決策層同時判斷 `answer_type`。`procedure` 類問題會把最相關片段的前後片段一起抓進來（步驟常接到下一頁），
+並要求：摘要 → 前置條件 → 照原文順序和編號列出全部步驟（每步附來源）→ 注意事項；步驟看起來不完整時要明說。
+
+**處理過的真實 PDF 問題**（是看抽出來的文字發現的，不是調參數）：
+
+| 問題 | 處理 |
+|---|---|
+| Chrome 列印的 PDF 會把部分漢字抽成康熙部首：「執⾏」的「⾏」是 U+2F8F 不是「行」，搜「執行」就找不到 | U+2F00–2FDF 用 NFKC 轉回；部首補充區（⻑ → 長）用對照表 |
+| 自動換行把詞切斷（抽／樣），BM25 斷不出詞 | 把行接回去：中文直接接、英文補空白；全形句尾標點、條列編號、字體大小跳動時保留換行 |
+| 每頁重複的頁首頁尾 | 頁面最上／最下 12% 且在多數頁面重複的行不索引 |
+| 中文檔名讓片段 id 有中文，引用查核認不出來 | id 一律是 `[a-z0-9-]`；非英數檔名加短雜湊 |
+
+<!-- FILE_RESULTS -->
 
 ## 評測
 
@@ -181,7 +212,8 @@ rerank 分數也能當相關性訊號：門檻 0.5 時保留 96% 的標準片段
 
 ## 快速開始
 
-需要：Node.js 22 以上、Docker、[Ollama](https://ollama.com) 和顯示卡（8 GB 就夠）。
+需要：Node.js 22 以上、Docker、[Ollama](https://ollama.com) 和顯示卡（8 GB 就夠）；處理 PowerPoint／Word 需要
+LibreOffice（`soffice` 在 PATH 上，Windows 可以裝在 WSL 裡；Docker image 已內建）。
 
 ```bash
 git clone https://github.com/KJLavender/agentic-rag-es.git
@@ -194,7 +226,7 @@ npm run setup:model               # 建 16k context 的變體（Ollama 的 OpenA
 
 docker compose up -d              # 裝好 ICU plugin 的 Elasticsearch
 npm run es:setup                  # 建索引、發兩把最小權限的 API key → .env.local
-npm run ingest                    # corpus/ → 切塊 → embedding → Elasticsearch
+npm run ingest                    # corpus/ + corpus/files/（PDF、PPTX）→ 切塊 → embedding → Elasticsearch
 
 npm run build:web && npm start    # http://127.0.0.1:8787
 ```
@@ -236,6 +268,7 @@ docker compose --env-file .env --env-file .env.local --profile app up -d --build
 | `DECISION_MIN_CONFIDENCE` | `0.5` | 低於就請使用者講清楚 |
 | `MAX_RETRIEVAL_ROUNDS` | `2` | CRAG 最多再查幾輪 |
 | `CONTEXT_K` | `6` | 每輪取幾個片段 |
+| `DOCS_DIR` | `data/docs` | 原始檔、轉出的 PDF、每頁截圖 |
 | `MCP_URL` / `MCP_TOKEN` | 未設定 | 改用 Streamable HTTP，而不是 stdio 子程序 |
 
 ## 專案結構
@@ -262,6 +295,8 @@ docs/plan.md     原始計畫
 - **4B 模型。** 偶爾會混進簡體字（用 OpenCC 轉回繁體）、過度解讀片段或漏掉重點；過程面板和引用查核讓問題看得見，但擋不住。
 - **評測規模小。** 單一語料、驗收組 24 題是方法示範，不是 benchmark。LLM 評審本身也是模型，它的評語都留在 `results/` 供複核。
 - **一張 GPU，一次一題。** 其他請求會排隊。
+- **還沒有 OCR。** 圖片裡的字（貼進 PDF 的截圖、掃描頁）搜尋不到，但頁面截圖上看得到。
+- **PDF 表格**是一列一列抽出來的，跨行的儲存格會交錯；問表格內容沒有問一般段落準。
 - **Elasticsearch 走 HTTP**，只開在 localhost。對外開放前要開 TLS。
 - **Rerank 在 CPU 上跑**，每輪檢索多約 1 秒。本機第一次使用會下載模型（約 280MB）；Docker image 已經內建。
 

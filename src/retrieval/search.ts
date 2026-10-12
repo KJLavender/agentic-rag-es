@@ -20,6 +20,9 @@ export interface Hit {
   via: "keyword" | "vector" | "both";
   /** vector 才有：query 跟片段的 cosine 相似度，決策層用來判斷是不是範圍外。 */
   similarity?: number;
+  file_type?: string;
+  page?: number;
+  layout?: ChunkDoc["layout"];
 }
 
 export interface SearchParams {
@@ -32,7 +35,7 @@ export interface SearchParams {
   rerank?: boolean;
 }
 
-const SOURCE: (keyof ChunkDoc)[] = ["chunk_id", "doc_id", "title", "source", "heading_path", "content", "position"];
+const SOURCE: (keyof ChunkDoc)[] = ["chunk_id", "doc_id", "title", "source", "heading_path", "content", "position", "file_type", "page", "layout"];
 
 /** ACL 一律在查詢裡過濾；沒有群組就只有 public。 */
 export function aclFilter(groups: string[]): estypes.QueryDslQueryContainer {

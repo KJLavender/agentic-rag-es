@@ -1,0 +1,20 @@
+{
+  "es-backup-sop.pdf": {
+    "title": "Elasticsearch 叢集備份與還原 SOP",
+    "acl": [
+      "public"
+    ]
+  },
+  "security-incident-sop.pdf": {
+    "title": "資安事件通報與處理 SOP",
+    "acl": [
+      "public"
+    ]
+  },
+  "aiops-q3-review.pptx": {
+    "title": "AIOps 平台 2026 Q3 進度報告",
+    "acl": [
+      "team"
+    ]
+  }
+}

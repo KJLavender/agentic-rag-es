@@ -6,6 +6,9 @@ import type { RetrievalClient } from "./retrieval-client.js";
 export const INTENTS = ["rag_question", "follow_up", "chitchat", "out_of_scope", "injection", "unclear"] as const;
 export type Intent = (typeof INTENTS)[number];
 
+export const ANSWER_TYPES = ["procedure", "fact", "other"] as const;
+export type AnswerType = (typeof ANSWER_TYPES)[number];
+
 export interface Decision {
   intent: Intent;
   confidence: number;
@@ -14,6 +17,8 @@ export interface Decision {
   /** 2~3 個檢索用的變體查詢。 */
   query_variants: string[];
   suggested_mode: Mode;
+  /** procedure：問怎麼做、步驟、流程、SOP → 用步驟格式回答，並補齊前後文避免漏步驟。 */
+  answer_type: AnswerType;
 }
 
 export interface DecisionResult {
@@ -71,15 +76,16 @@ const SCHEMA = {
     standalone_query: { type: "string" },
     query_variants: { type: "array", items: { type: "string" }, maxItems: 3 },
     suggested_mode: { type: "string", enum: MODES },
+    answer_type: { type: "string", enum: ANSWER_TYPES },
   },
-  required: ["intent", "confidence", "standalone_query", "query_variants", "suggested_mode"],
+  required: ["intent", "confidence", "standalone_query", "query_variants", "suggested_mode", "answer_type"],
 };
 
 const SYSTEM = `你是知識庫問答系統的「決策層」，只負責分類使用者的訊息並準備檢索查詢，不回答問題。
-知識庫內容：作者的開源專案文件（japan-trip-bot LINE 旅遊分帳 bot、AIOps / AIOps v2 Kubernetes 自我修復 agent、acp-pet 桌寵、PowerBI MCP 報表問答、mcp-security-lab、JP-maimai-Net 音遊機廳地圖、RAG 紅隊測試文件），包含功能、架構、設定、部署、安全、測試、限制。
+知識庫內容：公司與專案的文件，包含 SOP／作業流程、簡報、報告、技術文件、專案 README（功能、架構、設定、部署、安全、測試、限制）。實際有哪些文件，看使用者訊息下方「最相近的片段」：有相關的片段，就代表知識庫可能有答案。
 
 intent 規則：
-- rag_question：問知識庫可能有的內容（專案的功能、做法、設定、數字、限制…）。不確定知識庫有沒有也算，交給檢索判斷。
+- rag_question：問知識庫可能有的內容（文件或專案的做法、流程、設定、數字、限制…，包含「X 要怎麼處理」這類工作上的問題）。不確定知識庫有沒有也算，交給檢索判斷。
 - follow_up：承接上文的追問（「那 v2 呢？」「為什麼？」），要用對話歷史改寫成完整問題。
 - chitchat：打招呼、道謝、問你是誰。
 - out_of_scope：明顯跟知識庫無關（天氣、時事、股價、寫程式作業、一般知識、推薦電影）。
@@ -90,7 +96,8 @@ intent 規則：
 - confidence：0~1，你對 intent 判斷的把握。
 - standalone_query：不看對話歷史也看得懂的完整問題（繁體中文，保留專案名、指令、變數名原文）。
 - query_variants：1~3 個換句話說的檢索查詢，用知識庫文件可能出現的詞（例如「電費」→「全天候開機 電費」）。
-- suggested_mode：問題的關鍵是一個要精確比對的字串（環境變數名如 AIOPS_MAX_MEMORY、指令如 npm run eval、檔名、錯誤碼）→ keyword；其他（包含只是提到專案名稱的口語問題）→ hybrid。`;
+- suggested_mode：問題的關鍵是一個要精確比對的字串（環境變數名如 AIOPS_MAX_MEMORY、指令如 npm run eval、檔名、錯誤碼）→ keyword；其他（包含只是提到專案名稱的口語問題）→ hybrid。
+- answer_type：問「怎麼做、步驟、流程、SOP、要怎麼處理、發生 X 該怎麼辦」→ procedure；問事實、數字、原因、比較 → fact；其他 → other。`;
 
 function historyText(history: Turn[]): string {
   return history
@@ -105,7 +112,7 @@ function historyText(history: Turn[]): string {
  */
 export async function decide(question: string, history: Turn[], retrieval: RetrievalClient, groups: string[]): Promise<DecisionResult> {
   const q = question.trim();
-  const fallback: Decision = { intent: "rag_question", confidence: 1, standalone_query: q, query_variants: [], suggested_mode: "hybrid" };
+  const fallback: Decision = { intent: "rag_question", confidence: 1, standalone_query: q, query_variants: [], suggested_mode: "hybrid", answer_type: "other" };
 
   const rule = ruleCheck(q);
   if (rule) {
@@ -137,6 +144,7 @@ export async function decide(question: string, history: Turn[], retrieval: Retri
   d.standalone_query = d.standalone_query?.trim() || q;
   d.query_variants = (d.query_variants ?? []).map((v) => v.trim()).filter((v) => v && v !== d.standalone_query).slice(0, 2);
   if (!MODES.includes(d.suggested_mode)) d.suggested_mode = "hybrid";
+  if (!ANSWER_TYPES.includes(d.answer_type)) d.answer_type = "other";
 
   if (history.length && (d.intent === "rag_question" || d.intent === "follow_up")) {
     preview = await nearest(d.standalone_query);
@@ -147,8 +155,15 @@ export async function decide(question: string, history: Turn[], retrieval: Retri
   }
 
   // LLM 說範圍外或看不懂，但檢索明明找到很像的片段：以檢索為準（小模型會把「電費多少」當成一般知識）。injection 不推翻。
+  // 這時 LLM 的改寫也不可信（曾經把推理過程寫進查詢），改用使用者原本的問題。
   if ((d.intent === "out_of_scope" || d.intent === "unclear") && similarity >= config.domainStrongSimilarity) {
-    return { stage: "domain", proceed: true, similarity, reason: `LLM 判 ${d.intent}，但相似度 ${similarity.toFixed(2)} ≥ ${config.domainStrongSimilarity}，改成檢索`, decision: { ...d, intent: "rag_question" } };
+    return {
+      stage: "domain",
+      proceed: true,
+      similarity,
+      reason: `LLM 判 ${d.intent}，但相似度 ${similarity.toFixed(2)} ≥ ${config.domainStrongSimilarity}，改成檢索`,
+      decision: { ...d, intent: "rag_question", standalone_query: q, query_variants: [], suggested_mode: "hybrid" },
+    };
   }
   if (d.intent === "rag_question" || d.intent === "follow_up") {
     if (d.confidence < config.decisionMinConfidence) {

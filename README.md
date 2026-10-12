@@ -27,6 +27,7 @@ Everything runs locally: Elasticsearch in Docker, `qwen3.5:4b` and `bge-m3` on a
 
 - [What it does](#what-it-does)
 - [Architecture](#architecture)
+- [PDF, PowerPoint and evidence screenshots](#pdf-powerpoint-and-evidence-screenshots)
 - [Evaluation](#evaluation)
 - [Design decisions](#design-decisions)
 - [Security model](#security-model)
@@ -37,8 +38,8 @@ Everything runs locally: Elasticsearch in Docker, `qwen3.5:4b` and `bge-m3` on a
 
 ## What it does
 
-Ask questions about a document collection (the bundled corpus is the Traditional Chinese
-documentation of my other public projects). Every answer is grounded in retrieved passages,
+Ask questions about a document collection: Markdown, **PDF, PowerPoint and Word**. The bundled corpus is the
+Traditional Chinese documentation of my other public projects plus generated test SOPs and slides. Every answer is grounded in retrieved passages,
 cites them, and says "沒有相關資料" (no relevant data) instead of guessing.
 
 - **Four retrieval modes** over the same index: `keyword` (BM25), `vector` (kNN),
@@ -49,6 +50,10 @@ cites them, and says "沒有相關資料" (no relevant data) instead of guessing
   retry with a rewritten query and an untried mode → generate, or fail closed.
 - **Pi agent** (`@mariozechner/pi-agent-core`) with exactly two read-only tools over MCP and a hard tool budget.
 - **Citation check**: every cited passage id must have been retrieved in this turn; fabricated ones are removed and flagged.
+- **Evidence you can see**: every cited PDF / PPT passage comes with a screenshot of its page, the matching lines boxed,
+  plus the quoted text and a link that opens the original at that page.
+- **SOP answers**: "how do I…" questions get summary → prerequisites → every step in the original order (each cited) → warnings;
+  neighbouring chunks are pulled in so steps split across pages are not lost.
 - **Document-level ACL** enforced inside the MCP server's Elasticsearch query, never by the LLM.
 - **Chat UI** with streaming, numbered citations, source cards, a trace panel (decision,
   every retrieval round, grader verdicts, tool calls), history, settings, 👍/👎 and document upload.
@@ -80,7 +85,39 @@ Elasticsearch 9.5 (Basic)
  metadata: title, heading path, source, acl
    ▲
 Ingestion: Markdown → heading-aware chunks → "doc > section" prefix → embed → upsert
+           PDF / PPTX / DOCX → (LibreOffice → PDF) → per-page lines with positions + page JPEGs → chunks
 ```
+
+## PDF, PowerPoint and evidence screenshots
+
+![Evidence card: quoted lines highlighted and boxed on the page screenshot](docs/images/evidence.png)
+
+**Ingestion.** PPTX and DOCX are converted to PDF with LibreOffice (headless), so every format follows one path:
+`pdfjs-dist` extracts each page's text **line by line with its position on the page**, and every page is rendered
+to a JPEG. A slide is one chunk titled `投影片 N｜<slide title>`; PDF pages are chunked by size, with larger-font short
+lines detected as section headings (`5. 資料還原步驟（第 2 頁）`). Line positions are stored in the chunk
+(`layout`, not indexed) and returned by the MCP server only when the backend asks for them in `_meta`.
+
+**Evidence in the answer.** For each cited passage the UI shows an evidence card: document, page or slide, the quoted
+lines with the ones the answer actually used highlighted (character-bigram overlap with the sentences citing that
+passage), and the page screenshot with those lines boxed. Screenshots and originals are served only after the backend
+asks the MCP server whether this user can read the document — no access, no screenshot.
+
+**SOP answers.** The decision layer also classifies `answer_type`. For `procedure` questions the pipeline fetches the
+neighbouring chunks of the top passages (steps often continue on the next page) and the prompt requires:
+summary → prerequisites → all steps in the original order and numbering, each cited → warnings, and an explicit note
+if the steps look incomplete.
+
+**Real-world PDF problems this had to handle** (found by reading what was extracted, not by tuning):
+
+| Problem | Fix |
+|---|---|
+| Chrome-printed PDFs extract some characters as Kangxi radicals: 「執⾏」 is U+2F8F, not 行, so a search for 執行 misses | Map U+2F00–2FDF with NFKC, plus a table for the CJK Radicals Supplement (⻑ → 長) |
+| Auto-wrapped lines split words (抽 / 樣), breaking BM25 | Re-join lines: CJK joins directly, Latin gets a space, keep the newline after full-width sentence punctuation, list markers or a font-size jump |
+| Page headers and footers repeat on every page | Lines in the top / bottom 12% that repeat on most pages are dropped |
+| Chinese file names produced non-ASCII chunk ids the citation check could not see | ids are always `[a-z0-9-]`; non-ASCII names get a short hash |
+
+<!-- FILE_RESULTS -->
 
 ## Evaluation
 
@@ -188,7 +225,8 @@ Each layer assumes the one above it has failed.
 
 ## Quick start
 
-Requirements: Node.js 22+, Docker, [Ollama](https://ollama.com) with a GPU (8 GB is enough).
+Requirements: Node.js 22+, Docker, [Ollama](https://ollama.com) with a GPU (8 GB is enough), and LibreOffice
+for PowerPoint / Word files (`soffice` on PATH, or inside WSL on Windows; the Docker image includes it).
 
 ```bash
 git clone https://github.com/KJLavender/agentic-rag-es.git
@@ -201,7 +239,7 @@ npm run setup:model               # 16k-context variant (Ollama's OpenAI API ign
 
 docker compose up -d              # Elasticsearch with the ICU plugin
 npm run es:setup                  # create the index and two least-privilege API keys → .env.local
-npm run ingest                    # corpus/ → chunks → embeddings → Elasticsearch
+npm run ingest                    # corpus/ + corpus/files/ (PDF, PPTX) → chunks → embeddings → Elasticsearch
 
 npm run build:web && npm start    # http://127.0.0.1:8787
 ```
@@ -243,6 +281,7 @@ upload) to demonstrate the ACL. It is **not** authentication — see [Limitation
 | `DECISION_MIN_CONFIDENCE` | `0.5` | below: ask the user to clarify |
 | `MAX_RETRIEVAL_ROUNDS` | `2` | extra CRAG rounds |
 | `CONTEXT_K` | `6` | passages per round |
+| `DOCS_DIR` | `data/docs` | originals, converted PDFs and page screenshots |
 | `MCP_URL` / `MCP_TOKEN` | unset | use Streamable HTTP instead of a stdio child process |
 
 ## Project layout
@@ -269,6 +308,8 @@ docs/plan.md     original plan (Traditional Chinese)
 - **4B model.** It occasionally mixes in Simplified characters (converted with OpenCC), over-reads passages or misses a point; the trace panel and citation check make that visible, they don't prevent it.
 - **Small evaluation.** 24 test questions on one corpus is a method demonstration, not a benchmark. The LLM judge is itself a model; its notes are in `results/` for review.
 - **One GPU, one question at a time.** Requests queue.
+- **No OCR yet.** Text inside images (screenshots pasted into a PDF, scanned pages) is not searchable; the page screenshot still shows it.
+- **PDF tables** come out row by row and cells that wrap across lines can interleave; answers about tables are less reliable than prose.
 - **Elasticsearch over plain HTTP** on localhost. Enable TLS before exposing it.
 - **Rerank runs on CPU** and adds about a second per retrieval round. Locally the first use downloads the model (~280 MB); the Docker image ships with it.
 

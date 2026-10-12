@@ -1,7 +1,12 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { config } from "../config.js";
 import { embed } from "../embed.js";
 import { esClient, type ChunkDoc } from "../es/index.js";
-import { chunkMarkdown, contextualText, hash, parseDocument } from "./chunk.js";
+import { chunkMarkdown, contextualText, docIdFrom, hash, parseDocument } from "./chunk.js";
+import { chunkPages, type PageChunk } from "./page-chunk.js";
+import { officeToPdf } from "./office.js";
+import { openPdf, readPdfPages, renderPdfPages } from "./pdf.js";
 
 export interface IngestResult {
   docId: string;
@@ -9,29 +14,37 @@ export interface IngestResult {
   chunks: number;
   embedded: number;
   removed: number;
+  pages?: number;
+}
+
+export const FILE_TYPES = ["md", "txt", "pdf", "pptx", "docx"] as const;
+
+type ChunkInput = Omit<ChunkDoc, "embedding" | "content_hash" | "ingested_at" | "chunk_id" | "doc_id" | "title" | "source" | "acl" | "file_type">;
+
+interface DocMeta {
+  docId: string;
+  title: string;
+  source: string;
+  acl: string[];
+  fileType: string;
 }
 
 /**
- * 一份文件 → 切塊 → embedding → upsert。
+ * 切好的片段 → embedding → upsert。
  * chunk_id 當 _id，重跑不會重複；內容沒變的片段沿用舊向量；文件變短時刪掉多出來的舊片段。
  */
-export async function ingestDocument(raw: string, fileName: string, aclOverride?: string[]): Promise<IngestResult> {
+async function upsert(meta: DocMeta, chunks: ChunkInput[]): Promise<IngestResult> {
   const es = esClient("ingest");
-  const doc = parseDocument(raw, fileName);
-  if (aclOverride?.length) doc.acl = aclOverride;
-  const chunks = chunkMarkdown(doc.body, doc.title, config.chunkMaxChars, config.chunkOverlap);
-
   const docs: Omit<ChunkDoc, "embedding">[] = chunks.map((c) => {
-    const text = contextualText(doc.title, c.headingPath, c.content);
+    const text = contextualText(meta.title, c.heading_path, c.content);
     return {
-      chunk_id: `${doc.docId}#${c.position}`,
-      doc_id: doc.docId,
-      title: doc.title,
-      source: doc.source,
-      heading_path: c.headingPath,
-      content: c.content,
-      position: c.position,
-      acl: doc.acl,
+      ...c,
+      chunk_id: `${meta.docId}#${c.position}`,
+      doc_id: meta.docId,
+      title: meta.title,
+      source: meta.source,
+      acl: meta.acl,
+      file_type: meta.fileType,
       content_hash: hash(text + config.embedModel),
       ingested_at: new Date().toISOString(),
     };
@@ -40,11 +53,7 @@ export async function ingestDocument(raw: string, fileName: string, aclOverride?
   // 沿用沒變的向量：同一個 chunk_id、同樣的 hash 就不用再算
   const existing = new Map<string, { hash: string; embedding: number[] }>();
   if (docs.length) {
-    const prev = await es.mget<ChunkDoc>({
-      index: config.esIndex,
-      ids: docs.map((d) => d.chunk_id),
-      _source_includes: ["content_hash", "embedding"],
-    });
+    const prev = await es.mget<ChunkDoc>({ index: config.esIndex, ids: docs.map((d) => d.chunk_id), _source_includes: ["content_hash", "embedding"] });
     for (const d of prev.docs) {
       if ("found" in d && d.found && d._source) existing.set(d._id, { hash: d._source.content_hash, embedding: d._source.embedding });
     }
@@ -68,13 +77,64 @@ export async function ingestDocument(raw: string, fileName: string, aclOverride?
   const removed = await es.deleteByQuery({
     index: config.esIndex,
     refresh: true,
-    query: {
-      bool: {
-        filter: [{ term: { doc_id: doc.docId } }],
-        must_not: [{ terms: { chunk_id: docs.map((d) => d.chunk_id) } }],
-      },
-    },
+    query: { bool: { filter: [{ term: { doc_id: meta.docId } }], must_not: [{ terms: { chunk_id: docs.map((d) => d.chunk_id) } }] } },
   });
-
-  return { docId: doc.docId, title: doc.title, chunks: docs.length, embedded: todo.length, removed: removed.deleted ?? 0 };
+  return { docId: meta.docId, title: meta.title, chunks: docs.length, embedded: todo.length, removed: removed.deleted ?? 0 };
 }
+
+/** Markdown / 純文字。frontmatter 可以帶 title / source / acl。 */
+export async function ingestDocument(raw: string, fileName: string, aclOverride?: string[]): Promise<IngestResult> {
+  const doc = parseDocument(raw, fileName);
+  if (aclOverride?.length) doc.acl = aclOverride;
+  const chunks = chunkMarkdown(doc.body, doc.title, config.chunkMaxChars, config.chunkOverlap);
+  return upsert(
+    { docId: doc.docId, title: doc.title, source: doc.source, acl: doc.acl, fileType: fileName.toLowerCase().endsWith(".txt") ? "txt" : "md" },
+    chunks.map((c) => ({ heading_path: c.headingPath, content: c.content, position: c.position })),
+  );
+}
+
+export interface FileMeta {
+  title?: string;
+  acl: string[];
+  source?: string;
+}
+
+/**
+ * PDF / PPTX / DOCX：Office 檔先用 LibreOffice 轉 PDF，再逐頁抽文字（含位置）、渲染每頁截圖。
+ * 原檔、轉出的 PDF、每頁截圖存在 DOCS_DIR/<doc_id>/，前端顯示證據截圖時由 backend 檢查權限後提供。
+ */
+export async function ingestFile(data: Buffer, fileName: string, meta: FileMeta): Promise<IngestResult> {
+  const ext = fileName.toLowerCase().split(".").pop() ?? "";
+  if (!["pdf", "pptx", "docx"].includes(ext)) throw new Error(`不支援的檔案類型：${ext}`);
+  const docId = docIdFrom(fileName);
+  const pdf = ext === "pdf" ? data : await officeToPdf(data, ext);
+  const doc = await openPdf(new Uint8Array(pdf));
+  try {
+    const pages = await readPdfPages(doc);
+    const title = meta.title || (await doc.getMetadata().catch(() => null))?.info?.["Title" as never] || fileName.replace(/\.[^.]+$/, "");
+
+    const dir = join(config.docsDir, docId);
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `original.${ext}`), data);
+    writeFileSync(join(dir, "source.pdf"), pdf);
+    await renderPdfPages(doc, dir);
+    writeFileSync(join(dir, "meta.json"), JSON.stringify({ docId, title, fileName, fileType: ext, pages: pages.length }, null, 2));
+
+    const chunks: PageChunk[] = chunkPages(pages, ext === "pdf" ? "page" : "slide", config.chunkMaxChars);
+    const res = await upsert(
+      { docId, title: String(title), source: meta.source ?? fileName, acl: meta.acl, fileType: ext },
+      chunks.map((c, i) => ({
+        heading_path: c.headingPath,
+        content: c.content,
+        position: i,
+        page: c.page,
+        layout: { lines: c.lines.map((l) => ({ t: l.text, b: l.box })) },
+      })),
+    );
+    return { ...res, pages: pages.length };
+  } finally {
+    await doc.loadingTask.destroy();
+  }
+}
+

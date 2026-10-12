@@ -22,6 +22,12 @@ export interface ChunkDoc {
   embedding: number[];
   content_hash: string;
   ingested_at: string;
+  /** md / pdf / pptx / docx */
+  file_type: string;
+  /** PDF 頁碼／投影片編號（從 1 開始）；Markdown 沒有。 */
+  page?: number;
+  /** 片段裡每一行的文字和在頁面上的位置（0～1），給證據截圖框線用；不建索引。 */
+  layout?: { lines: { t: string; b: [number, number, number, number] }[] };
 }
 
 export function indexDefinition(dims: number): Omit<estypes.IndicesCreateRequest, "index"> {
@@ -53,6 +59,9 @@ export function indexDefinition(dims: number): Omit<estypes.IndicesCreateRequest
         embedding: { type: "dense_vector", dims, index: true, similarity: "cosine" },
         content_hash: { type: "keyword" },
         ingested_at: { type: "date" },
+        file_type: { type: "keyword" },
+        page: { type: "integer" },
+        layout: { type: "object", enabled: false },
       },
     },
   };

@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import type { Mode } from "../retrieval/search.js";
-import { decide, type DecisionResult, type Turn } from "./decision.js";
+import { decide, type AnswerType, type DecisionResult, type Turn } from "./decision.js";
 import { generate } from "./generate.js";
 import { grade, type Grade } from "./grade.js";
 import type { Passage, RetrievalClient } from "./retrieval-client.js";
@@ -91,6 +91,7 @@ export async function runPipeline(
   let standalone = question;
   let variants: string[] = [];
   let mode: Mode = settings.mode === "auto" ? "hybrid" : settings.mode;
+  let answerType: AnswerType = "other";
   if (settings.decision) {
     const d = await decide(question, input.history, retrieval, input.groups);
     trace.decision = d;
@@ -100,6 +101,7 @@ export async function runPipeline(
     standalone = d.decision.standalone_query;
     variants = d.decision.query_variants;
     if (settings.mode === "auto") mode = d.decision.suggested_mode;
+    answerType = d.decision.answer_type;
   }
 
   // ② 檢索 + ③ 評審（CRAG 迴圈）
@@ -146,6 +148,19 @@ export async function runPipeline(
 
   // 一筆都查不到：fail-closed，不讓模型自由發揮
   if (!context.length) return say(`${NO_DATA}。知識庫裡找不到跟這個問題有關的內容。`);
+
+  // SOP／流程題：步驟常被切在不同片段、甚至不同頁。把最相關兩個片段的前後片段補進來，
+  // 依文件與原文順序排好，生成時才不會漏步驟或排錯順序。
+  if (answerType === "procedure") {
+    emit({ type: "status", text: "補齊流程的前後步驟" });
+    const around = (await Promise.all(context.slice(0, 2).map((p) => retrieval.getDocument(p.id, input.groups)))).flat();
+    const merged = new Map([...context, ...around].map((p) => [p.id, p]));
+    const docOrder = [...new Set([...merged.values()].map((p) => p.id.split("#")[0]))];
+    const pos = (p: Passage) => Number(p.id.split("#")[1]);
+    context = [...merged.values()]
+      .sort((a, b) => docOrder.indexOf(a.id.split("#")[0]) - docOrder.indexOf(b.id.split("#")[0]) || pos(a) - pos(b))
+      .slice(0, 8);
+  }
   trace.context = context.map((p) => p.id);
   emit({ type: "sources", data: context });
 
@@ -166,6 +181,7 @@ export async function runPipeline(
       },
     },
     signal,
+    answerType,
   );
   lap("generate", t);
   if (gen.error) trace.error = gen.error;

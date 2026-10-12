@@ -18,7 +18,9 @@ import { runPipeline, type PipelineResult, type Settings } from "../src/agent/pi
 import { RetrievalClient } from "../src/agent/retrieval-client.js";
 import { saysNoData as noDataText } from "../src/agent/verify.js";
 import { SYSTEM_PROMPT } from "../src/agent/generate.js";
-import { loadGolden, relevantIds, splitArg, type Question, type Trap } from "./lib/golden.js";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { goldenPath, loadGolden, relevantIds, splitArg, type Question, type Trap } from "./lib/golden.js";
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -125,6 +127,16 @@ const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / (xs.length || 1);
 const byKind = new Map<string, TRun[]>();
 for (const t of trapRuns) byKind.set(t.t.kind, [...(byKind.get(t.t.kind) ?? []), t]);
 
+// SOP 題：回答裡列出的步驟編號（1. 2. …）數量要 ≥ 原文的步驟數
+const stepCount = (answer: string) => new Set([...answer.matchAll(/^\s*(\d+)[.、)]\s/gm)].map((m) => m[1])).size;
+const sopRuns = judged.filter((x) => x.q.steps);
+const sopComplete = sopRuns.filter((x) => stepCount(x.r.answer) >= x.q.steps!);
+// 證據截圖：引用到的 PDF / PPT 片段，每頁截圖檔都要存在
+const fileCited = judged.filter((x) => x.r.sources.some((s) => s.page && s.file_type && s.file_type !== "md"));
+const shotsOk = fileCited.filter((x) =>
+  x.r.sources.filter((s) => s.page && s.file_type !== "md").every((s) => existsSync(join(config.docsDir, s.id.split("#")[0], `p${s.page}.jpg`))),
+);
+
 const report = [
   `端到端評測｜${split === "test" ? "驗收組" : split === "tune" ? "調整組" : "全部"}｜${label}｜生成 ${config.llmModel}｜評審 ${judgeModel}`,
   "",
@@ -138,6 +150,8 @@ const report = [
   `| 有無據內容（評審，越低越好） | ${pct(count((x) => x.j.unsupported))} |`,
   `| 引用查核通過（程式） | ${pct(count((x) => x.r.trace.verify?.status === "ok"))} |`,
   `| 答得出卻說查不到 | ${pct(count((x) => x.r.trace.verify?.status === "no_answer"))} |`,
+  ...(sopRuns.length ? [`| SOP 步驟列齊（程式） | ${sopComplete.length}/${sopRuns.length} |`] : []),
+  ...(fileCited.length ? [`| 引用 PDF／PPT 時證據截圖可用（程式） | ${shotsOk.length}/${fileCited.length} |`] : []),
   `| 陷阱題通過 | ${pct(trapRuns.filter((t) => t.pass).length, trapRuns.length)}（${[...byKind].map(([k, v]) => `${k} ${v.filter((x) => x.pass).length}/${v.length}`).join("、")}） |`,
   `| 平均耗時 | ${(avg(judged.map((x) => x.r.trace.timings.total)) / 1000).toFixed(1)}s（陷阱題 ${(avg(trapRuns.map((t) => t.r.trace.timings.total)) / 1000).toFixed(1)}s） |`,
 ].join("\n");
@@ -149,7 +163,7 @@ for (const x of judged.filter((x) => !x.j.correct || x.j.unsupported || !x.conte
 for (const t of trapRuns.filter((t) => !t.pass)) console.log(`  ${t.t.id}（${t.t.kind}）${t.why}`);
 
 mkdirSync("results", { recursive: true });
-const tag = `${split}-${settings.decision ? "dec" : "nodec"}-${settings.mode}${settings.rerank ? "-rerank" : ""}`;
+const tag = `${goldenPath().replace(/^.*[\\/]/, "").replace(/\.json$/, "")}-${split}-${settings.decision ? "dec" : "nodec"}-${settings.mode}${settings.rerank ? "-rerank" : ""}`;
 const file = `results/e2e-${tag}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.json`;
 writeFileSync(
   file,

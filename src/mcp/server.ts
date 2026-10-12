@@ -26,7 +26,10 @@ function audit(tool: string, args: unknown, groups: string[], ids: string[]) {
   console.error(JSON.stringify({ audit: true, at: new Date().toISOString(), tool, args, groups, result_ids: ids }));
 }
 
-const view = (h: Hit) => ({
+/** 呼叫端在 _meta.layout 要求時，才附上每一行在頁面上的座標（證據截圖用）；一般 MCP client 不需要這些雜訊。 */
+const wantsLayout = (meta: unknown) => (meta as { layout?: unknown } | undefined)?.layout === true;
+
+const view = (h: Hit, layout: boolean) => ({
   id: h.chunk_id,
   title: h.title,
   section: h.heading_path,
@@ -34,11 +37,14 @@ const view = (h: Hit) => ({
   score: Number(h.score.toFixed(4)),
   via: h.via,
   ...(h.similarity !== undefined ? { similarity: Number(h.similarity.toFixed(4)) } : {}),
+  ...(h.file_type ? { file_type: h.file_type } : {}),
+  ...(h.page ? { page: h.page } : {}),
+  ...(layout && h.layout ? { lines: h.layout.lines } : {}),
   content: h.content,
 });
 
-const reply = (results: Hit[]) => ({
-  content: [{ type: "text" as const, text: JSON.stringify({ notice: DATA_NOTICE, count: results.length, results: results.map(view) }) }],
+const reply = (results: Hit[], meta: unknown) => ({
+  content: [{ type: "text" as const, text: JSON.stringify({ notice: DATA_NOTICE, count: results.length, results: results.map((h) => view(h, wantsLayout(meta))) }) }],
 });
 
 export function createRetrievalServer(): McpServer {
@@ -65,7 +71,7 @@ export function createRetrievalServer(): McpServer {
       const groups = groupsFrom(extra._meta);
       const hits = await search(es, { mode, query, k, groups, rerank });
       audit("search", { mode, query, k, rerank }, groups, hits.map((h) => h.chunk_id));
-      return reply(hits);
+      return reply(hits, extra._meta);
     },
   );
 
@@ -82,7 +88,7 @@ export function createRetrievalServer(): McpServer {
       // 沒權限跟不存在回一樣的結果，不透露文件存在
       const hits = await getDocument(es, id, groups);
       audit("get_document", { id }, groups, hits.map((h) => h.chunk_id));
-      return reply(hits);
+      return reply(hits, extra._meta);
     },
   );
 

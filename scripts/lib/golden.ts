@@ -12,6 +12,8 @@ export interface Question {
   groups?: string[];
   points: string[];
   evidence: { doc: string; text: string }[];
+  /** SOP 題：原文應有的步驟數。 */
+  steps?: number;
 }
 
 export interface Trap {
@@ -31,8 +33,14 @@ export function splitArg(): Split {
   return s;
 }
 
-export function loadGolden(split: Split): { questions: Question[]; traps: Trap[] } {
-  const g = JSON.parse(readFileSync("eval/golden.json", "utf8")) as { questions: Question[]; traps: Trap[] };
+/** --golden 指定題庫檔，預設 eval/golden.json。 */
+export function goldenPath(): string {
+  const i = process.argv.indexOf("--golden");
+  return i >= 0 ? process.argv[i + 1] : "eval/golden.json";
+}
+
+export function loadGolden(split: Split, path = goldenPath()): { questions: Question[]; traps: Trap[] } {
+  const g = JSON.parse(readFileSync(path, "utf8")) as { questions: Question[]; traps: Trap[] };
   const keep = <T extends { split: string }>(xs: T[]) => (split === "all" ? xs : xs.filter((x) => x.split === split));
   return { questions: keep(g.questions), traps: keep(g.traps) };
 }

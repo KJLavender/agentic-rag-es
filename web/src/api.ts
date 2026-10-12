@@ -25,6 +25,7 @@ export const api = {
   deleteConversation: (id: string) => call(`/api/conversations/${id}`, { method: "DELETE" }),
   feedback: (messageId: number, rating: number) => call("/api/feedback", { method: "POST", body: JSON.stringify({ messageId, rating }) }),
   documents: () => call<DocumentView[]>("/api/documents"),
-  upload: (filename: string, content: string, acl: string[]) =>
-    call<{ docId: string; chunks: number; embedded: number }>("/api/documents", { method: "POST", body: JSON.stringify({ filename, content, acl }) }),
+  /** 文字檔送 content；PDF / PPTX / Word 送 base64 的 data。 */
+  upload: (filename: string, file: { content?: string; data?: string }, acl: string[]) =>
+    call<{ docId: string; chunks: number; embedded: number; pages?: number }>("/api/documents", { method: "POST", body: JSON.stringify({ filename, ...file, acl }) }),
 };
