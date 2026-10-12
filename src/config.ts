@@ -46,6 +46,8 @@ export const config = {
 
   port: num("PORT", 8787),
   dbPath: env("DB_PATH", "data/app.sqlite"),
+  /** PDF / PPTX 的原檔、轉出的 PDF、每頁截圖（證據截圖用）。 */
+  docsDir: env("DOCS_DIR", "data/docs"),
   /** MCP retrieval server：設了就走 Streamable HTTP（docker compose），沒設就用 stdio 子程序。 */
   mcpUrl: process.env.MCP_URL ?? "",
 };

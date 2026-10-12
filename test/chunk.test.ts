@@ -55,3 +55,17 @@ test("contextual 前綴：文件 > 章節", () => {
   assert.equal(contextualText("文件", "安裝 > Docker", "內容"), "文件 > 安裝 > Docker\n內容");
   assert.equal(contextualText("文件", "", "內容"), "文件\n內容");
 });
+
+test("PDF 抽出的康熙部首字元轉回標準漢字，全形標點不動", async () => {
+  const { fixRadicals } = await import("../src/ingest/pdf.js");
+  assert.equal(fixRadicals("執⾏備份，⽣效⽇期，技術⻑核准"), "執行備份，生效日期，技術長核准");
+});
+
+test("PDF 換行接回：中文接續、英文補空白、條列保留換行；頁尾濾掉", async () => {
+  const { joinLines, boilerplateLines } = await import("../src/ingest/page-chunk.js");
+  assert.equal(joinLines([{ text: "請資料擁有團隊做抽" }, { text: "樣查詢。" }, { text: "1. 下一步" }]), "請資料擁有團隊做抽樣查詢。\n1. 下一步");
+  assert.equal(joinLines([{ text: "PUT _snapshot/nightly-s3/snap?" }, { text: "wait_for_completion=false" }]), "PUT _snapshot/nightly-s3/snap?wait_for_completion=false");
+  const line = (text: string, y: number) => ({ text, box: [0.1, y, 0.9, y + 0.02] as [number, number, number, number], size: 0.02 });
+  const pages = [1, 2].map((n) => ({ page: n, lines: [line(`內文 ${n}`, 0.5), line(`公司 — 第 ${n} / 2 頁`, 0.95)] }));
+  assert.equal(boilerplateLines(pages).size, 1);
+});

@@ -132,3 +132,27 @@ label.check.inline { display: inline-flex; margin-right: 8px; }
 .upload { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
 .docs table { width: 100%; border-collapse: collapse; background: var(--panel); font-size: 13px; }
 .docs th, .docs td { border-bottom: 1px solid var(--line); padding: 8px; text-align: left; }
+
+/* ── 證據卡 ── */
+.evidences { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.ev-title { font-size: 12px; color: var(--muted); font-weight: 600; }
+.evidence { border: 1px solid var(--line); border-radius: 8px; font-size: 13px; background: #fff; }
+.evidence.open { border-color: var(--accent); }
+.ev-head { width: 100%; text-align: left; border: none; background: none; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.ev-head .num { color: #fff; background: var(--accent); border-radius: 4px; padding: 0 6px; font-weight: 600; }
+.ev-head .id { margin-left: auto; font-size: 11px; }
+.ev-type { font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+.ev-body { padding: 4px 12px 12px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.ev-body:has(.shot) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
+.ev-body:not(:has(.shot)) { grid-template-columns: 1fr; }
+.ev-quote { background: #fafaf8; border-radius: 6px; padding: 8px; max-height: 360px; overflow-y: auto; line-height: 1.6; }
+.ev-quote .q { color: var(--muted); padding: 0 4px; border-radius: 3px; }
+.ev-quote .q.on { color: var(--text); background: #fff3b0; }
+.ev-quote pre { white-space: pre-wrap; font-family: inherit; margin: 0; }
+.ev-links { grid-column: 1 / -1; display: flex; gap: 14px; font-size: 12px; }
+.shot { position: relative; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; cursor: zoom-in; align-self: start; }
+.shot img { display: block; width: 100%; }
+.shot .hl { position: absolute; border-radius: 2px; pointer-events: none; }
+.shot .hl.on { border: 2px solid #e5484d; background: rgba(255, 214, 10, 0.25); }
+.lightbox { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.shot.big { width: min(92vw, 1000px); max-height: 92vh; overflow-y: auto; cursor: zoom-out; background: #fff; }

@@ -2,7 +2,16 @@ import { useEffect, useState } from "react";
 import type { UserView } from "../../src/shared/ui";
 import { api, type DocumentView } from "./api";
 
-/** 上傳 .md / .txt → 觸發 ingestion（切塊、embedding、寫進 ES）。acl 只能選自己有的群組。 */
+/** 讀成 base64（不含 data: 前綴）。 */
+const toBase64 = (f: File) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(f);
+  });
+
+/** 上傳 Markdown / 文字 / PDF / PPTX / Word → 觸發 ingestion。acl 只能選自己有的群組。 */
 export function Documents({ user }: { user: UserView }) {
   const [docs, setDocs] = useState<DocumentView[]>([]);
   const [file, setFile] = useState<File | null>(null);
@@ -19,10 +28,11 @@ export function Documents({ user }: { user: UserView }) {
   const upload = async () => {
     if (!file) return;
     setBusy(true);
-    setMsg("切塊、計算 embedding 中…");
+    setMsg(/\.(pptx|docx)$/i.test(file.name) ? "轉成 PDF、擷取每頁截圖、切塊、計算 embedding 中…" : "切塊、計算 embedding 中…");
     try {
-      const r = await api.upload(file.name, await file.text(), acl);
-      setMsg(`已加入 ${r.docId}：${r.chunks} 塊（新算 ${r.embedded} 個向量）`);
+      const binary = /\.(pdf|pptx|docx)$/i.test(file.name);
+      const r = await api.upload(file.name, binary ? { data: await toBase64(file) } : { content: await file.text() }, acl);
+      setMsg(`已加入 ${r.docId}：${r.pages ? `${r.pages} 頁、` : ""}${r.chunks} 塊（新算 ${r.embedded} 個向量）`);
       setFile(null);
       load();
     } catch (e) {
@@ -36,7 +46,7 @@ export function Documents({ user }: { user: UserView }) {
     <div className="docs">
       <h2>文件</h2>
       <div className="upload">
-        <input type="file" accept=".md,.txt" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <input type="file" accept=".md,.txt,.pdf,.pptx,.docx" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         <span>誰看得到：</span>
         {groups.map((g) => (
           <label key={g} className="check inline">

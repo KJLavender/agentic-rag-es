@@ -13,6 +13,12 @@ export interface Passage {
   score: number;
   via: string;
   similarity?: number;
+  /** md / pdf / pptx / docx */
+  file_type?: string;
+  /** PDF 頁碼、投影片編號。 */
+  page?: number;
+  /** 片段每一行的文字和位置（0～1），證據截圖框線用。 */
+  lines?: { t: string; b: [number, number, number, number] }[];
   content: string;
 }
 
@@ -60,7 +66,8 @@ export class RetrievalClient {
 
   private async call(name: string, args: Record<string, unknown>, groups: string[]): Promise<Passage[]> {
     await this.connect();
-    const res = await this.client.callTool({ name, arguments: args, _meta: { groups } });
+    // layout：要每一行的座標（證據截圖框線用）
+    const res = await this.client.callTool({ name, arguments: args, _meta: { groups, layout: true } });
     const text = (res.content as { type: string; text?: string }[]).find((c) => c.type === "text")?.text ?? "";
     if (res.isError) throw new Error(`MCP ${name} 失敗：${text.slice(0, 300)}`);
     return (JSON.parse(text) as { results: Passage[] }).results;

@@ -14,3 +14,5 @@ results/
 *.log
 .DS_Store
 Thumbs.db
+# 只在本機測試用的文件（含個資，不上傳）
+corpus-local/

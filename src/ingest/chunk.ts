@@ -14,6 +14,16 @@ export interface Chunk {
   position: number;
 }
 
+/**
+ * 檔名 → 文件 id（片段 id 是「文件 id#序號」）。id 一律只用小寫英數字和 -：
+ * 引用查核、前端引用標記都靠這個格式辨認。中文檔名保留英數部分，再加檔名的短雜湊避免撞名。
+ */
+export function docIdFrom(fileName: string): string {
+  const base = fileName.replace(/\.[^.]+$/, "");
+  const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return /^[\x20-\x7e]*$/.test(base) && slug ? slug : `${slug || "doc"}-${hash(base).slice(0, 6)}`;
+}
+
 /** 讀 frontmatter（title / source / acl）。 */
 export function parseDocument(raw: string, fileName: string): ParsedDoc {
   const text = raw.replace(/^﻿/, "").replace(/\r\n/g, "\n");
@@ -29,10 +39,9 @@ export function parseDocument(raw: string, fileName: string): ParsedDoc {
   }
   // 雙語 README 的語言切換列，對檢索沒有用
   body = body.replace(/^\[English\]\(README\.md\)\s*\|.*$/gm, "");
-  const docId = fileName.replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9一-鿿]+/g, "-").replace(/^-|-$/g, "");
   const h1 = body.match(/^# (.+)$/m)?.[1].trim();
   return {
-    docId,
+    docId: docIdFrom(fileName),
     title: meta.title || h1 || fileName,
     source: meta.source || fileName,
     // 沒標 acl 就當成私有（只有 admin 群組看得到），寧可查不到也不要外洩

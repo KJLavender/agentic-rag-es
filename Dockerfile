@@ -11,7 +11,9 @@ RUN npx vite build && RERANK_CACHE=/app/models npx tsx scripts/fetch-rerank-mode
 
 FROM node:22-bookworm-slim
 WORKDIR /app
-ENV NODE_ENV=production RERANK_CACHE=/app/models RERANK_OFFLINE=1
+ENV NODE_ENV=production RERANK_CACHE=/app/models RERANK_OFFLINE=1 DOCS_DIR=/app/data/docs
+# LibreOffice（headless）把 PPTX / DOCX 轉成 PDF 才能擷取每頁截圖；Noto CJK 讓中文投影片正確顯示
+RUN apt-get update && apt-get install -y --no-install-recommends libreoffice-impress-nogui libreoffice-writer-nogui fonts-noto-cjk && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/web/dist web/dist

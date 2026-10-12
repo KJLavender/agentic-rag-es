@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { createUIMessageStream, pipeUIMessageStreamToResponse } from "ai";
@@ -8,7 +8,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { config } from "../config.js";
 import { openDb, schema } from "../db/index.js";
 import { esClient } from "../es/index.js";
-import { ingestDocument } from "../ingest/ingest.js";
+import { ingestDocument, ingestFile } from "../ingest/ingest.js";
 import { llmUp } from "../agent/llm.js";
 import { runPipeline, type Trace } from "../agent/pipeline.js";
 import { RetrievalClient, type Passage } from "../agent/retrieval-client.js";
@@ -33,7 +33,8 @@ retrieval.onAudit((line) => {
 let queue: Promise<unknown> = Promise.resolve();
 let waiting = 0;
 
-const app = Fastify({ logger: { level: "info" }, bodyLimit: 1_000_000 });
+// 上傳 PDF / PPTX 是 base64，25MB 的檔案約 34MB
+const app = Fastify({ logger: { level: "info" }, bodyLimit: 40_000_000 });
 
 // ── 使用者（示範用：用 cookie 選身分，群組一律從資料庫查，不信任前端）──
 function currentUser(req: FastifyRequest): UserView {
@@ -244,18 +245,63 @@ app.get("/api/documents", async (req, reply) => {
   return buckets.map((b) => ({ docId: b.key, chunks: b.doc_count, ...b.top.hits.hits[0]._source }));
 });
 
-app.post<{ Body: { filename: string; content: string; acl?: string[] } }>("/api/documents", async (req, reply) => {
+app.post<{ Body: { filename: string; content?: string; data?: string; acl?: string[] } }>("/api/documents", async (req, reply) => {
   const user = requireAdmin(req, reply);
   if (!user) return;
-  const filename = String(req.body?.filename ?? "").replace(/[^\w.\-一-鿿]/g, "_").slice(0, 100);
-  const content = String(req.body?.content ?? "");
-  if (!/\.(md|txt)$/i.test(filename)) return reply.code(400).send({ error: "只接受 .md 或 .txt" });
-  if (!content.trim() || content.length > 500_000) return reply.code(400).send({ error: "內容是空的或超過 500KB" });
+  const filename = String(req.body?.filename ?? "").replace(/[^\w.\-一-鿿 ()]/g, "_").slice(0, 120);
+  const ext = filename.toLowerCase().split(".").pop() ?? "";
+  if (!["md", "txt", "pdf", "pptx", "docx"].includes(ext)) return reply.code(400).send({ error: "只接受 .md、.txt、.pdf、.pptx、.docx" });
   const allowed = new Set(["public", ...user.groups]);
   const acl = (req.body.acl?.length ? req.body.acl : ["admin"]).map(String);
   if (acl.some((g) => !allowed.has(g))) return reply.code(403).send({ error: `acl 只能是你有的群組：${[...allowed].join(", ")}` });
-  // 上傳檔案裡的 frontmatter acl 不採信，一律用表單選的
-  return ingestDocument(content, filename, acl);
+  if (ext === "md" || ext === "txt") {
+    const content = String(req.body?.content ?? "");
+    if (!content.trim() || content.length > 500_000) return reply.code(400).send({ error: "內容是空的或超過 500KB" });
+    // 上傳檔案裡的 frontmatter acl 不採信，一律用表單選的
+    return ingestDocument(content, filename, acl);
+  }
+  const data = Buffer.from(String(req.body?.data ?? ""), "base64");
+  if (!data.length || data.length > 25_000_000) return reply.code(400).send({ error: "檔案是空的或超過 25MB" });
+  return ingestFile(data, filename, { acl, source: filename });
+});
+
+// ── 證據截圖與原始檔：先透過 MCP 確認這個使用者查得到這份文件，再給檔案 ──
+const accessCache = new Map<string, number>();
+async function canRead(user: UserView, docId: string): Promise<boolean> {
+  const key = `${user.id}|${docId}`;
+  if ((accessCache.get(key) ?? 0) > Date.now()) return true;
+  // 沒權限跟不存在一樣：MCP 回空的
+  const ok = (await retrieval.getDocument(docId, user.groups)).length > 0;
+  if (ok) accessCache.set(key, Date.now() + 60_000);
+  return ok;
+}
+
+const DOC_ID = /^[a-z0-9][a-z0-9-]{0,80}$/;
+
+app.get<{ Params: { docId: string; page: string } }>("/api/docs/:docId/pages/:page", async (req, reply) => {
+  const { docId } = req.params;
+  const page = Number(req.params.page.replace(/\.jpg$/, ""));
+  if (!DOC_ID.test(docId) || !Number.isInteger(page) || page < 1) return reply.code(400).send({ error: "參數不正確" });
+  const file = join(config.docsDir, docId, `p${page}.jpg`);
+  if (!(await canRead(currentUser(req), docId)) || !existsSync(file)) return reply.code(404).send({ error: "找不到" });
+  return reply.header("cache-control", "private, max-age=300").type("image/jpeg").send(createReadStream(file));
+});
+
+app.get<{ Params: { docId: string }; Querystring: { original?: string } }>("/api/docs/:docId/file", async (req, reply) => {
+  const { docId } = req.params;
+  if (!DOC_ID.test(docId) || !(await canRead(currentUser(req), docId))) return reply.code(404).send({ error: "找不到" });
+  const dir = join(config.docsDir, docId);
+  // 預設給 PDF（PPTX 也轉好了），瀏覽器可以用 #page=N 直接跳到那一頁；?original=1 下載原檔
+  if (req.query.original) {
+    const metaFile = join(dir, "meta.json");
+    const meta: { fileType?: string; fileName?: string } = existsSync(metaFile) ? JSON.parse(readFileSync(metaFile, "utf8")) : {};
+    const file = join(dir, `original.${meta.fileType ?? "pdf"}`);
+    if (!existsSync(file)) return reply.code(404).send({ error: "找不到" });
+    return reply.header("content-disposition", `attachment; filename*=UTF-8''${encodeURIComponent(meta.fileName ?? `${docId}.${meta.fileType}`)}`).send(createReadStream(file));
+  }
+  const pdf = join(dir, "source.pdf");
+  if (!existsSync(pdf)) return reply.code(404).send({ error: "找不到" });
+  return reply.header("cache-control", "private, max-age=300").type("application/pdf").send(createReadStream(pdf));
 });
 
 // ── 前端（npm run build:web 之後由這裡提供；開發時用 vite dev server）──

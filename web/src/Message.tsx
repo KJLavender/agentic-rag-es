@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { DecisionResult, Passage, RagUIMessage, RetrievalRound, Trace, Verification } from "../../src/shared/ui";
 import { api } from "./api";
 import { Markdown } from "./Markdown";
+import { EvidenceCard } from "./Evidence";
 
 const STAGE = { rules: "規則", domain: "領域相似度", llm: "LLM 分類" } as const;
 const INTENT: Record<string, string> = {
@@ -42,15 +43,29 @@ function VerifyBadge({ v }: { v?: Verification }) {
 
 export function AssistantMessage({ message, showTrace, streaming }: { message: RagUIMessage; showTrace: boolean; streaming: boolean }) {
   const { text, decision, sources, verify, rounds, tools } = collect(message);
-  const [open, setOpen] = useState<string | null>(null);
+  // 證據卡：預設展開第一張，讓使用者一眼看到 RAG 真的找到了哪一頁；點引用編號會展開對應的卡
+  const [opened, setOpened] = useState<Set<string> | null>(null);
   const [rating, setRating] = useState(message.metadata?.rating ?? 0);
-  // 引用編號依來源順序：[1]、[2]…
-  const order = sources.map((s) => s.id);
+  // 證據只列回答真的引用到的片段；查核還沒出來（串流中）時先列全部 context
+  const evidence = verify?.cited.length ? sources.filter((s) => verify.cited.includes(s.id)) : sources;
+  // 引用編號依證據順序：[1]、[2]…
+  const order = evidence.map((s) => s.id);
+  const isOpen = (id: string) => (opened ? opened.has(id) : !streaming && id === order[0]);
+  const toggle = (id: string) => {
+    const next = new Set(opened ?? (order[0] && !streaming ? [order[0]] : []));
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setOpened(next);
+  };
   const cite = (id: string) => {
     const n = order.indexOf(id) + 1;
     if (!n) return <sup className="cite missing" title="不在這次的來源裡">{id}</sup>;
+    const jump = () => {
+      if (!isOpen(id)) toggle(id);
+      setTimeout(() => document.getElementById(`ev-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
+    };
     return (
-      <sup className={`cite ${open === id ? "active" : ""}`} title={id} onClick={() => setOpen(open === id ? null : id)}>
+      <sup className={`cite ${isOpen(id) ? "active" : ""}`} title={id} onClick={jump}>
         {n}
       </sup>
     );
@@ -65,27 +80,11 @@ export function AssistantMessage({ message, showTrace, streaming }: { message: R
     <div className="msg assistant">
       {text ? <Markdown text={text} cite={cite} /> : streaming ? <p className="muted">…</p> : null}
 
-      {sources.length > 0 && (
-        <div className="sources">
-          {sources.map((s, i) => (
-            <div key={s.id} className={`source ${open === s.id ? "open" : ""}`}>
-              <button className="source-head" onClick={() => setOpen(open === s.id ? null : s.id)}>
-                <span className="num">{i + 1}</span>
-                <span className="source-title">{s.title}</span>
-                {s.section && <span className="muted"> › {s.section}</span>}
-                <span className="muted id">{s.id}</span>
-              </button>
-              {open === s.id && (
-                <div className="source-body">
-                  <pre>{s.content}</pre>
-                  {/^https?:\/\//.test(s.source) && (
-                    <a href={s.source} target="_blank" rel="noreferrer noopener">
-                      原文 ↗
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
+      {evidence.length > 0 && (
+        <div className="evidences">
+          <div className="ev-title">找到的證據（{evidence.length}）</div>
+          {evidence.map((p) => (
+            <EvidenceCard key={p.id} p={p} n={order.indexOf(p.id) + 1} answer={text} open={isOpen(p.id)} onToggle={() => toggle(p.id)} />
           ))}
         </div>
       )}
