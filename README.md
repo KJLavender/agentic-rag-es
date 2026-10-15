@@ -14,7 +14,7 @@ Everything runs locally: Elasticsearch in Docker, `qwen3.5:4b` and `bge-m3` on a
 ![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.5%20Basic-005571?logo=elasticsearch&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-read--only%20retrieval-black)
 ![Ollama](https://img.shields.io/badge/LLM-Ollama%20%C2%B7%20qwen3.5%3A4b-black)
-![Tests](https://img.shields.io/badge/tests-23%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ![Chat](docs/images/chat.png)
@@ -117,7 +117,25 @@ if the steps look incomplete.
 | Page headers and footers repeat on every page | Lines in the top / bottom 12% that repeat on most pages are dropped |
 | Chinese file names produced non-ASCII chunk ids the citation check could not see | ids are always `[a-z0-9-]`; non-ASCII names get a short hash |
 
-<!-- FILE_RESULTS -->
+**Results** (`eval/golden-files.json`: 13 natural-language questions on generated SOP PDFs and slides, 4 of them SOPs, plus 3 traps;
+and 6 questions on three real PDFs from my older repos, kept local because they contain personal data):
+
+| Metric | Generated PDF / PPTX | Real PDFs (local only) |
+|---|---|---|
+| Gold passage reached the context | 100% | 83% |
+| Answer correct (judge) | 92% | 83% |
+| Key-point coverage (judge) | 85% | 72% |
+| Unsupported claims (judge) | 8% | 17% |
+| Citation check passed | 100% | 83% |
+| SOP answers listing every step | 3/4 | 1/2 |
+| Evidence screenshot available for cited PDF / PPT passages | 13/13 | 6/6 |
+| Traps (ACL leak, unanswerable) | 2/3 | — |
+
+<sub>Reviewing the answers found two problems, both fixed **after** this run: "which number do I call?" was classified as a
+procedure and padded with unrelated steps, and "how do I back up Kafka?" borrowed the Elasticsearch steps instead of saying
+there is no such procedure. The decision layer now treats single-fact questions as facts, and the SOP prompt must answer
+"no relevant data" when the procedure for that system isn't in the passages. On the real PDFs the misses are a table
+question (the schema lives in SQL dumps that chunk poorly) and an SOP whose steps are spread across two report sections.</sub>
 
 ## Evaluation
 

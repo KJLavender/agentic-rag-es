@@ -13,7 +13,7 @@
 ![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.5%20Basic-005571?logo=elasticsearch&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-read--only%20retrieval-black)
 ![Ollama](https://img.shields.io/badge/LLM-Ollama%20%C2%B7%20qwen3.5%3A4b-black)
-![Tests](https://img.shields.io/badge/tests-23%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ![聊天畫面](docs/images/chat.png)
@@ -107,7 +107,24 @@ backend 透過 MCP 確認這個使用者看得到這份文件才會給，沒權�
 | 每頁重複的頁首頁尾 | 頁面最上／最下 12% 且在多數頁面重複的行不索引 |
 | 中文檔名讓片段 id 有中文，引用查核認不出來 | id 一律是 `[a-z0-9-]`；非英數檔名加短雜湊 |
 
-<!-- FILE_RESULTS -->
+**結果**（`eval/golden-files.json`：針對產生的 SOP PDF 和簡報的 13 題口語問題，其中 4 題是 SOP，另有 3 題陷阱；
+以及我舊 repo 裡三份真實 PDF 的 6 題，因為含個資只放在本機）：
+
+| 指標 | 產生的 PDF／PPTX | 真實 PDF（僅本機） |
+|---|---|---|
+| 標準片段有進到 context | 100% | 83% |
+| 答案正確（評審） | 92% | 83% |
+| 重點涵蓋率（評審） | 85% | 72% |
+| 無據內容（評審） | 8% | 17% |
+| 引用查核通過 | 100% | 83% |
+| SOP 回答列齊所有步驟 | 3/4 | 1/2 |
+| 引用 PDF／PPT 時證據截圖可用 | 13/13 | 6/6 |
+| 陷阱題（ACL 外洩、查無答案） | 2/3 | — |
+
+<sub>人工檢查回答後發現兩個問題，都在這次評測**之後**才修：「要打哪支電話」被當成流程題，塞了不相關的步驟；
+「Kafka 要怎麼備份」借用了 Elasticsearch 的步驟，而不是說查不到。現在決策層把單一事實題判成 fact，SOP 格式也規定
+片段裡沒有那個系統的流程就要回答「沒有相關資料」。真實 PDF 沒答好的是一題表格題（資料表結構在 SQL dump 裡，切塊效果差）
+和一題步驟分散在報告兩個章節的 SOP。</sub>
 
 ## 評測
 
