@@ -97,7 +97,7 @@ intent 規則：
 - standalone_query：不看對話歷史也看得懂的完整問題（繁體中文，保留專案名、指令、變數名原文）。
 - query_variants：1~3 個換句話說的檢索查詢，用知識庫文件可能出現的詞（例如「電費」→「全天候開機 電費」）。
 - suggested_mode：問題的關鍵是一個要精確比對的字串（環境變數名如 AIOPS_MAX_MEMORY、指令如 npm run eval、檔名、錯誤碼）→ keyword；其他（包含只是提到專案名稱的口語問題）→ hybrid。
-- answer_type：問「怎麼做、步驟、流程、SOP、要怎麼處理、發生 X 該怎麼辦」→ procedure；問事實、數字、原因、比較 → fact；其他 → other。`;
+- answer_type：問「怎麼做、步驟、流程、SOP、要怎麼處理、發生 X 該怎麼辦」→ procedure；問單一事實（打給誰、多久內、幾點、多少、哪一個），即使跟流程有關也是 fact；問數字、原因、比較 → fact；其他 → other。`;
 
 function historyText(history: Turn[]): string {
   return history
