@@ -154,13 +154,17 @@ Every mode can be combined with `rerank=true` on the MCP `search` tool: the firs
 
 | Mode | Hit@1 | Hit@3 | Hit@5 | MRR@10 | + rerank: Hit@1 | Hit@5 | MRR@10 |
 |---|---|---|---|---|---|---|---|
-| keyword (BM25) | 63% | 79% | 88% | 0.732 | 83% | **100%** | **0.910** |
-| vector (kNN) | 67% | 83% | 88% | 0.764 | **88%** | 96% | 0.906 |
-| hybrid (weighted RRF) | 67% | 83% | 92% | 0.775 | 83% | **100%** | 0.906 |
-| cascade | 58% | 83% | 83% | 0.699 | **88%** | 96% | 0.906 |
+| keyword (BM25) | 67% | 75% | 83% | 0.736 | 83% | **100%** | 0.906 |
+| vector (kNN) | 67% | 83% | 88% | 0.764 | 83% | 92% | 0.873 |
+| hybrid (weighted RRF) | 58% | 83% | 92% | 0.729 | **88%** | 96% | **0.922** |
+| cascade | 58% | 83% | 83% | 0.699 | 83% | 92% | 0.868 |
 
 <sub>First stage alone: 17–58 ms per query. Rerank adds about 0.9 s (20 candidates, CPU). RTX 3060 Ti 8 GB.
-On the tune set keyword search alone was much weaker (63% Hit@5); with rerank every mode lands around MRR 0.9 on both splits.</sub>
+On the tune set keyword search alone was much weaker (63% Hit@5); with rerank every mode lands around MRR 0.9 on both splits.
+Re-measured on 2026-10-21 after the PowerBI MCP documents in the corpus were updated and three added (.pbix import, the Excel report,
+several reports). The question that dropped is q44 ("which time windows does the daily analysis use?"): the new .pbix-import
+document also lists the windows and now outranks the labelled passage. The test labels were left as they were.
+The reranker comparison and the end-to-end results below were measured on the corpus before this update.</sub>
 
 #### Choosing the reranker
 
