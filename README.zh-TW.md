@@ -13,7 +13,7 @@
 ![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.5%20Basic-005571?logo=elasticsearch&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-read--only%20retrieval-black)
 ![Ollama](https://img.shields.io/badge/LLM-Ollama%20%C2%B7%20qwen3.5%3A4b-black)
-![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-29%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ![聊天畫面](docs/images/chat.png)
@@ -167,6 +167,38 @@ MCP 的 `search` 工具每種模式都可以加 `rerank=true`：第一段先撈 
 rerank 分數也能當相關性訊號：門檻 0.5 時保留 96% 的標準片段、濾掉 53～68% 的其他片段，
 跟 LLM 評審差不多（保留 91～93%、濾掉 65～75%）。</sub>
 
+#### Rerank 後端，包含開源的 decision model
+
+rerank 後端可以互換（`RERANKER`）：程序內的 cross-encoder、任何 `llama-server --reranking`（`/v1/rerank`）、
+走 System One API（`/v1/systemone`）的 **decision model**（llama.cpp 可以跑開源的 Julia-1、Laya、Kev，雲端的 Jev 也是同一種格式），
+或本機 LLM。後端失敗或逾時時退回第一段的排序，MCP 稽核紀錄會記下來。System One 的位址不在本機時會拒絕使用，
+除非設 `RERANK_ALLOW_REMOTE=1`，因為那等於把文件片段送出本機。
+
+`scripts/eval-rerankers.ts` 用每個後端重排同一批 hybrid 候選，輸出 NDCG、MRR 變化的配對 bootstrap 95% 信賴區間、
+依題型（單一事實／要綜合多段／換句話說）拆開的 MRR、延遲，以及最高分能不能分辨「有答案」和「沒答案」的題目。
+decision model 的問法在調整組上選，驗收組用選好的問法只跑一次。
+
+| 驗收組，hybrid，20 個候選 | MRR@10 | MRR 變化（95% CI） | NDCG@10 | 綜合多段 MRR | 換句話說 MRR | 延遲 p50 |
+|---|---|---|---|---|---|---|
+| 不 rerank | 0.729 | — | 0.767 | 0.583 | 0.350 | — |
+| **`bge-reranker-base`**（278M、ONNX、CPU） | **0.922** | **+0.193（+0.089 ~ +0.302）** | **0.919** | **1.000** | **0.800** | 0.9 s |
+| `Qwen3-Reranker-0.6B`（Q8、llama.cpp、CPU） | 0.799 | +0.069（−0.066 ~ +0.198） | 0.848 | 0.833 | 0.717 | 14.5 s |
+| Julia-1（144M decision model、CPU） | 0.080 | −0.650（−0.795 ~ −0.500） | 0.137 | 0.083 | 0.073 | 2.1 s |
+| Laya（421M decision model、CPU） | 0.203 | −0.526（−0.710 ~ −0.332） | 0.262 | 0.778 | 0.167 | 17.4 s |
+
+<sub>驗收組 24 題（單一事實 16、綜合多段 3、換句話說 5）。調整組的排名一樣（bge +0.149，CI +0.004 ~ +0.287；
+Qwen3 +0.092，CI 含 0；兩個 decision model 試過的每種問法都比不 rerank 差）。PDF／PPTX 題組的第一段已經到 MRR 0.962，
+沒有任何 reranker 能再改善（bge −0.038，CI −0.115 ~ 0）。延遲是在其他程式同時佔用 CPU 時量的，只能互相比較，不能跟前面的表比。
+Kev-4B 和 LLM 後端需要 GPU，還沒跑。</sub>
+
+- **開源 decision model 在這裡不能直接當 reranker 用。** Julia-1 和 Laya 把標準片段排得比亂排還後面。看原始分數，
+  Laya 對幾乎每段 300～600 字的真實片段，「這段能回答問題嗎？」都給 0.6～0.9；Julia-1 換個問法排名就整個反過來。
+  它們是做「在幾個短選項中挑一個」的，不是拿片段跟問題逐句比對；比較適合拿來當決策層的分類器（另做實驗）。
+- **在這份語料上，Qwen3-Reranker 沒有比小的 bge 模型好**，在 CPU 上還慢 16 倍。它對很多候選都給接近 1.0 的分數，
+  分不出高低，在要綜合多段的題目上吃虧。
+- **rerank 分數分得出「有答案」和「沒答案」的題目**（兩個 cross-encoder 最高分的 AUROC 都是 1.00，第一段是 0.93），
+  但驗收組只有 3 題沒答案的題目，這只是之後設門檻的線索，還不是證據。
+
 ### 端到端（驗收組）
 
 由 `rag-qwen3.5-4b` 生成，用比生成模型大的 `qwen3.5:9b` 當評審，再人工抽查。
@@ -259,6 +291,7 @@ npm run ask -- --groups team --rerank "Report Server 上傳 422 怎麼辦？"
 npm run mcp                                                  # stdio 的 MCP server（可以接 MCP Inspector）
 npm run eval:retrieval -- --split test --rerank
 npx tsx scripts/eval-rerank.ts --split test                 # rerank 模型 × 候選數
+npx tsx scripts/eval-rerankers.ts --split test --rerankers none,bge,qwen3,laya:doc   # rerank 後端（要先開 llama-server）
 npm run eval:e2e -- --split test [--no-decision] [--rerank] [--mode hybrid]
 npm test
 ```
@@ -284,6 +317,8 @@ docker compose --env-file .env --env-file .env.local --profile app up -d --build
 | `CHUNK_MAX_CHARS` / `CHUNK_OVERLAP` | `600` / `80` | 切塊大小、重疊 |
 | `HYBRID_KEYWORD_WEIGHT` | `0.3` | hybrid RRF 裡 BM25 的權重（向量是 1） |
 | `RERANK_MODEL` / `RERANK_CANDIDATES` | `Xenova/bge-reranker-base` / `20` | cross-encoder 模型、第一段撈幾個候選給它重排 |
+| `RERANKER` / `RERANK_URL` / `RERANK_FORMAT` | `cross-encoder` / 未設定 / `pair` | rerank 後端：`cross-encoder`、`rerank-api`（llama.cpp `/v1/rerank`）、`systemone`（decision model）或 `llm`；endpoint；System One 的問法 |
+| `RERANK_TIMEOUT_MS` / `RERANK_ALLOW_REMOTE` | `15000` / 未設定 | 超過就用第一段的排序；允許不在本機的後端（會把片段送出本機） |
 | `DOMAIN_MIN_SIMILARITY` / `DOMAIN_STRONG_SIMILARITY` | `0.55` / `0.65` | 低於：範圍外；高於：推翻 LLM 的「範圍外」 |
 | `DECISION_MIN_CONFIDENCE` | `0.5` | 低於就請使用者講清楚 |
 | `MAX_RETRIEVAL_ROUNDS` | `2` | CRAG 最多再查幾輪 |
@@ -296,7 +331,7 @@ docker compose --env-file .env --env-file .env.local --profile app up -d --build
 ```
 src/
   ingest/        切塊（依標題、濾掉垃圾片段、章節前綴）與 upsert
-  retrieval/     四種模式、RRF、選用的 cross-encoder rerank
+  retrieval/     四種模式、RRF、選用的 rerank（cross-encoder／llama.cpp／System One／LLM）
   mcp/           MCP retrieval server（stdio / Streamable HTTP）
   agent/         決策層、評審、CRAG 流程、Pi 生成、引用查核
   db/            SQLite schema
@@ -307,6 +342,7 @@ scripts/         es:setup、ingest、ask、評測、門檻校準、網頁冒煙�
 eval/golden.json 題目、證據句子、陷阱題
 corpus/          內建文件（含一份 prompt injection 陷阱）
 docs/plan.md     原始計畫
+docs/rerank-plan.md  reranker 對照實驗的計畫與調整
 ```
 
 ## 限制

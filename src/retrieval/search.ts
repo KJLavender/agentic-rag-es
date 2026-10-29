@@ -129,7 +129,7 @@ export async function search(es: Client, p: SearchParams): Promise<Hit[]> {
   return rerank(q, candidates, k);
 }
 
-async function firstStage(es: Client, mode: Mode, q: string, k: number, groups: string[]): Promise<Hit[]> {
+export async function firstStage(es: Client, mode: Mode, q: string, k: number, groups: string[]): Promise<Hit[]> {
   const p = { mode, groups };
   switch (p.mode) {
     case "keyword":
