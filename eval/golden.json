@@ -3,7 +3,7 @@
   "questions": [
     {
       "id": "q01",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "acp-pet 的寵物哪些動作會自動放行？哪些要我按准？",
       "points": ["read、search、think 自動放行", "edit、execute、fetch 等要按准", "超時沒回應視為拒絕"],
       "evidence": [
@@ -12,7 +12,7 @@
     },
     {
       "id": "q02",
-      "split": "test",
+      "split": "test", "type": "paraphrase",
       "question": "桌寵的 workspace 可以直接設成我的家目錄嗎？",
       "points": ["不行", "家目錄、磁碟根目錄、~/.ssh 等一律拒絕", "必須是專用資料夾"],
       "evidence": [
@@ -21,7 +21,7 @@
     },
     {
       "id": "q03",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "acp-pet 比賽模式裡贏的寵物可以拿到什麼？",
       "points": ["🏆", "15 點額外 XP"],
       "evidence": [
@@ -30,7 +30,7 @@
     },
     {
       "id": "q04",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "acp-pet 總共有幾個單元和整合測試？",
       "points": ["123 個"],
       "evidence": [
@@ -39,7 +39,7 @@
     },
     {
       "id": "q05",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "ヒカリ和ノゾミ的像素版圖片是多大？",
       "points": ["48×52 像素", "放大 4 倍"],
       "evidence": [
@@ -48,7 +48,7 @@
     },
     {
       "id": "q06",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "acp-pet 的設定檔放在哪裡？",
       "points": ["~/.acp-pet/config.json", "第一次啟動時產生"],
       "evidence": [
@@ -57,7 +57,7 @@
     },
     {
       "id": "q07",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "AIOps agent 遇到 OOMKilled 會怎麼處理？",
       "points": ["記憶體上限調高為 2 倍", "最低 512Mi", "重啟"],
       "evidence": [
@@ -66,7 +66,7 @@
     },
     {
       "id": "q08",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "AIOps 裡的 LLM 可以自己寫 kubectl patch 嗎？",
       "points": ["不行", "只能從限定清單挑一個動作", "patch 由程式對照線上 Deployment 組出來"],
       "evidence": [
@@ -75,7 +75,7 @@
     },
     {
       "id": "q09",
-      "split": "tune",
+      "split": "tune", "type": "multi",
       "question": "AIOps 的自我修復流程有哪些步驟？",
       "points": ["規則", "知識庫", "網路搜尋", "LLM 分析", "評估／預檢", "修復", "驗證", "學習"],
       "evidence": [
@@ -85,7 +85,7 @@
     },
     {
       "id": "q10",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "AIOps 的知識庫會把哪些修法存起來？",
       "points": ["只存套用過且驗證通過的修法", "連同對應的工作負載一起存", "不會套到別的 Deployment"],
       "evidence": [
@@ -94,7 +94,7 @@
     },
     {
       "id": "q11",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "AIOPS_LLM_AUTO_FIX_MIN_CONFIDENCE 預設是多少？",
       "points": ["0.7"],
       "evidence": [
@@ -103,7 +103,7 @@
     },
     {
       "id": "q12",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "AIOps 的 Prometheus 和 Loki 資料會保留多久？",
       "points": ["7 天"],
       "evidence": [
@@ -112,7 +112,7 @@
     },
     {
       "id": "q13",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "AIOps 用什麼發通知？有哪些 topic？",
       "points": ["自架 ntfy", "flights、github-daily、repo-picks、aiops"],
       "evidence": [
@@ -121,7 +121,7 @@
     },
     {
       "id": "q14",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "AIOps 有多少個測試？怎麼執行？",
       "points": ["121 個", "pytest -q", "可離線執行"],
       "evidence": [
@@ -130,7 +130,7 @@
     },
     {
       "id": "q15",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "AIOps 是在什麼環境上測試部署的？",
       "points": ["WSL2 Ubuntu", "單節點 k3s", "8 GB GPU 跑 Ollama"],
       "evidence": [
@@ -139,7 +139,7 @@
     },
     {
       "id": "q16",
-      "split": "test",
+      "split": "test", "type": "multi",
       "question": "AIOps v2 為什麼要把一個 agent 拆成好幾個？",
       "points": ["讀網頁的元件沒有變更叢集的權限", "有 patch 權限的元件連不到外網", "避免被汙染的網頁導致壞 patch"],
       "evidence": [
@@ -149,7 +149,7 @@
     },
     {
       "id": "q17",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "AIOps v2 的 diagnose agent 有哪些 Kubernetes 權限？",
       "points": ["沒有（除了自己的 CRD）"],
       "evidence": [
@@ -158,7 +158,7 @@
     },
     {
       "id": "q18",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "AIOps v2 的 repair agent 可以連外網嗎？",
       "points": ["不能"],
       "evidence": [
@@ -168,7 +168,7 @@
     },
     {
       "id": "q19",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "AIOps v2 定義了哪些 custom resource？",
       "points": ["Incident", "Remediation", "Lesson"],
       "evidence": [
@@ -177,7 +177,7 @@
     },
     {
       "id": "q20",
-      "split": "test",
+      "split": "test", "type": "paraphrase",
       "question": "AIOps v2 的 agent 隨時重啟會不會出問題？",
       "points": ["不會", "phase 欄位就是協調協定，每個 agent 只處理自己的階段"],
       "evidence": [
@@ -186,7 +186,7 @@
     },
     {
       "id": "q21",
-      "split": "tune",
+      "split": "tune", "type": "multi",
       "question": "AIOps v2 怎麼避免 log 裡的密碼被送出去？",
       "points": ["證據遮罩", "密碼、token、key 從 log 和 event 移除", "環境變數只複製名稱不複製值"],
       "evidence": [
@@ -196,7 +196,7 @@
     },
     {
       "id": "q22",
-      "split": "test",
+      "split": "test", "type": "multi",
       "question": "AIOps v2 的 LLM 能指定哪幾種修復動作？",
       "points": ["set_readiness_probe_path", "rollout_restart", "lower_requests", "set_memory_limit"],
       "evidence": [
@@ -206,7 +206,7 @@
     },
     {
       "id": "q23",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "AIOps v2 有幾個測試？要跑多久？",
       "points": ["70 個", "約 0.1 秒", "離線"],
       "evidence": [
@@ -215,7 +215,7 @@
     },
     {
       "id": "q24",
-      "split": "test",
+      "split": "test", "type": "multi",
       "question": "AIOps v2 現在有什麼限制？",
       "points": ["每個 agent 只有一個 replica", "沒有 leader election", "用 kubectl 輪詢而不是 watch"],
       "evidence": [
@@ -224,7 +224,7 @@
     },
     {
       "id": "q25",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "japan-trip-bot 怎麼記帳和結算？",
       "points": ["用口語記帳", "一鍵結算", "算出最少轉帳次數"],
       "evidence": [
@@ -233,7 +233,7 @@
     },
     {
       "id": "q26",
-      "split": "test",
+      "split": "test", "type": "paraphrase",
       "question": "跟 japan-trip-bot 問日文怎麼說，回答會經過 AI 嗎？",
       "points": ["命中 46 句人工校對句庫時不經 AI", "句庫沒有才交給 AI", "AI 翻譯會附上可能不準確的提醒"],
       "evidence": [
@@ -242,7 +242,7 @@
     },
     {
       "id": "q27",
-      "split": "tune",
+      "split": "tune", "type": "paraphrase",
       "question": "在 LINE 群組裡要怎麼叫 bot 它才會回？",
       "points": ["@小幫手 或以「小幫手」開頭", "一對一聊天不需要"],
       "evidence": [
@@ -251,7 +251,7 @@
     },
     {
       "id": "q28",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "japan-trip-bot 為什麼要另外跑 setup:model？",
       "points": ["Ollama 的 OpenAI 相容介面會忽略 context 設定", "預設只有 4096 token", "system prompt 會被截掉"],
       "evidence": [
@@ -260,7 +260,7 @@
     },
     {
       "id": "q29",
-      "split": "tune",
+      "split": "tune", "type": "multi",
       "question": "japan-trip-bot 預設用哪個模型？實測分數多少？",
       "points": ["qwen3.5:4b", "總分 97%"],
       "evidence": [
@@ -270,7 +270,7 @@
     },
     {
       "id": "q30",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "japan-trip-bot 的架構設計原則是什麼？",
       "points": ["能用規則處理的就不交給 AI", "AI 只負責理解口語和把查證過的事實講成白話"],
       "evidence": [
@@ -279,7 +279,7 @@
     },
     {
       "id": "q31",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "japan-trip-bot 的資料存在哪裡？",
       "points": ["JSON 存在 data/", "ledgers、memos、sessions、archive"],
       "evidence": [
@@ -288,7 +288,7 @@
     },
     {
       "id": "q32",
-      "split": "test",
+      "split": "test", "type": "paraphrase",
       "question": "家裡電腦關機的時候 japan-trip-bot 還能用嗎？",
       "points": ["架構 B（bot 放雲端）時仍在線", "結算、帳目、記事等不經 AI 的功能照常可用", "AI 功能會回覆暫時離線"],
       "evidence": [
@@ -297,7 +297,7 @@
     },
     {
       "id": "q33",
-      "split": "tune",
+      "split": "tune", "type": "paraphrase",
       "question": "整天開著電腦跑 japan-trip-bot，電費大概多少？",
       "points": ["一個月約 50～70 度電", "NT$150～250"],
       "evidence": [
@@ -306,7 +306,7 @@
     },
     {
       "id": "q34",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "japan-trip-bot 怎麼確認 webhook 請求真的是 LINE 送來的？",
       "points": ["用 Channel secret 驗證 x-line-signature", "失敗回 401"],
       "evidence": [
@@ -315,7 +315,7 @@
     },
     {
       "id": "q35",
-      "split": "tune",
+      "split": "tune", "type": "paraphrase",
       "question": "很多人同時用 japan-trip-bot 會怎樣？",
       "points": ["共用一個 Ollama 要排隊", "每個群組最多 3 則、全部 8 則", "不經 AI 的指令不受影響"],
       "evidence": [
@@ -324,7 +324,7 @@
     },
     {
       "id": "q36",
-      "split": "test",
+      "split": "test", "type": "paraphrase",
       "question": "japan-trip-bot 可以幫我查電車怎麼轉乘嗎？",
       "points": ["尚未提供", "電車資料受授權限制，Google Maps API 查不到大眾運輸路線"],
       "evidence": [
@@ -333,7 +333,7 @@
     },
     {
       "id": "q37",
-      "split": "tune",
+      "split": "tune", "type": "paraphrase",
       "question": "音遊機廳查詢網站怎麼判斷店家現在有沒有開？",
       "points": ["依當地時間和星期幾計算", "日本 UTC+9、台灣 UTC+8"],
       "evidence": [
@@ -342,7 +342,7 @@
     },
     {
       "id": "q38",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "JP-maimai-Net 的正式版網站要怎麼更新？",
       "points": ["push 到 test 分支確認", "開 PR test → main", "CI 通過且維護者 approve 後合併自動部署"],
       "evidence": [
@@ -351,7 +351,7 @@
     },
     {
       "id": "q39",
-      "split": "tune",
+      "split": "tune", "type": "paraphrase",
       "question": "有沒有可以給 Discord bot 抓的機廳資料 API？",
       "points": ["data.json", "允許跨網域"],
       "evidence": [
@@ -360,7 +360,7 @@
     },
     {
       "id": "q40",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "mcp-security-lab 是怎麼驗證修補有沒有效的？",
       "points": ["協定層的 pytest 回歸測試", "直接送 MCP tools/call，不經過 AI"],
       "evidence": [
@@ -369,7 +369,7 @@
     },
     {
       "id": "q41",
-      "split": "tune",
+      "split": "tune", "type": "multi",
       "question": "PowerBI MCP 的問答 agent 怎麼避免亂講數字？",
       "points": ["數字由工具算，模型只照抄", "程式查核回答裡每個數字都要出現在工具結果", "不合格最多重寫 2 次，仍不合格就不顯示"],
       "evidence": [
@@ -379,7 +379,7 @@
     },
     {
       "id": "q42",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "PowerBI MCP 的聊天紀錄存在哪裡？",
       "points": ["data/chats.sqlite", "不進 git、不離開本機"],
       "evidence": [
@@ -388,7 +388,7 @@
     },
     {
       "id": "q43",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "question": "PowerBI MCP 的 agent 回答一題大概要多久？",
       "points": ["約 15～90 秒"],
       "evidence": [
@@ -397,7 +397,7 @@
     },
     {
       "id": "q44",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "PowerBI MCP 的每日變動分析用了哪些時間窗？",
       "points": ["單日", "近 7 日", "近 28 日", "近 28 日 vs 去年同期"],
       "evidence": [
@@ -406,7 +406,7 @@
     },
     {
       "id": "q45",
-      "split": "tune",
+      "split": "tune", "type": "multi",
       "question": "PowerBI MCP 的分析能告訴我業績下降的業務原因嗎？",
       "points": ["不能", "只能說明變化發生在哪裡", "除非原因本身在資料裡"],
       "evidence": [
@@ -416,7 +416,7 @@
     },
     {
       "id": "q46",
-      "split": "test",
+      "split": "test", "type": "fact",
       "question": "PowerBI MCP 的測試報表裡有多少筆訂單明細？",
       "points": ["270 萬筆"],
       "evidence": [
@@ -425,7 +425,7 @@
     },
     {
       "id": "q47",
-      "split": "tune",
+      "split": "tune", "type": "fact",
       "groups": ["team"],
       "question": "上傳 .pbix 到 Report Server 一直回 422 怎麼辦？",
       "points": ["Report Server 不支援 PBIR 格式", "用 to_legacy_pbix.py 轉成傳統 Layout 再打包"],
@@ -435,7 +435,7 @@
     },
     {
       "id": "q48",
-      "split": "test",
+      "split": "test", "type": "fact",
       "groups": ["team"],
       "question": "PowerBI 範例的 ETL 每天幾點把資料寫進 Oracle？",
       "points": ["每天 06:00"],

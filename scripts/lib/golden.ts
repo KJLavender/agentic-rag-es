@@ -9,6 +9,8 @@ export interface Question {
   id: string;
   split: "tune" | "test";
   question: string;
+  /** 題型（reranker 依題型拆開比）：fact 單一事實、multi 要綜合多段（含 SOP）、paraphrase 用詞跟文件差很多的口語問法。 */
+  type?: "fact" | "multi" | "paraphrase";
   groups?: string[];
   points: string[];
   evidence: { doc: string; text: string }[];
