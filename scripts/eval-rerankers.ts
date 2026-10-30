@@ -3,6 +3,7 @@
  *
  *   npx tsx scripts/eval-rerankers.ts --split tune --rerankers none,bge,qwen3,julia:pair,julia:doc,laya:pair --n 20,50
  *   npx tsx scripts/eval-rerankers.ts --split test --golden eval/golden-files.json --rerankers none,bge,laya:pair
+ *   npx tsx scripts/eval-rerankers.ts --split test --rerankers bge,kev:choice --baseline bge   # 跟現在的預設比
  *
  * 後端要先跑起來（llama.cpp，見 README）：
  *   llama-server -m Julia-1-Q8_0.gguf --port 8091            # julia
@@ -170,14 +171,16 @@ const m = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / (xs.length || 1);
 const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
 const types = ["fact", "multi", "paraphrase"].filter((t) => questions.some((q) => (q.type ?? "fact") === t));
 const recallAt = (n: number) => m(questions.map((q) => (pools.get(q.id)!.slice(0, n).some((h) => relevant.get(q.id)!.has(h.chunk_id)) ? 1 : 0)));
-const base = (n: number) => rows.find((r) => r.name === "none" && r.n === n) ?? rows.find((r) => r.name === "none");
+// --baseline：MRR 差跟哪一組比（預設不重排；例如 --baseline bge 看新後端有沒有贏現在的預設）
+const baseline = opt("baseline", "none");
+const base = (n: number) => rows.find((r) => r.name === baseline && r.n === n) ?? rows.find((r) => r.name === baseline);
 
 const lines = [
   `Reranker 對照｜${goldenPath()}｜${split === "test" ? "驗收組" : split === "tune" ? "調整組" : "全部"} ${questions.length} 題（${types.map((t) => `${t} ${questions.filter((q) => (q.type ?? "fact") === t).length}`).join("、")}）＋ 沒答案 ${noAnswer.length} 題｜候選來源 ${mode}｜${config.embedModel}`,
   "",
   `第一段的上限（標準片段有進前 N 個候選）：${ns.map((n) => `N=${n} ${pct(recallAt(n))}`).join("、")}`,
   "",
-  `| 後端 | N | Hit@1 | Hit@5 | MRR@10 | NDCG@5 | NDCG@10 | MRR 差（vs 不重排，95% CI） | ${types.map((t) => `MRR ${t}`).join(" | ")} | 延遲 p50 / p95 | 有答案 vs 沒答案 AUROC |`,
+  `| 後端 | N | Hit@1 | Hit@5 | MRR@10 | NDCG@5 | NDCG@10 | MRR 差（vs ${baseline === "none" ? "不重排" : baseline}，95% CI） | ${types.map((t) => `MRR ${t}`).join(" | ")} | 延遲 p50 / p95 | 有答案 vs 沒答案 AUROC |`,
   `|---|---|---|---|---|---|---|---|${types.map(() => "---|").join("")}---|---|`,
   ...rows.map((r) => {
     const b = base(r.n);

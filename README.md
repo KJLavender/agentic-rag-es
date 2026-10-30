@@ -193,29 +193,38 @@ localhost is refused unless `RERANK_ALLOW_REMOTE=1`, because it would send passa
 `scripts/eval-rerankers.ts` re-ranks the same hybrid candidates with each backend and reports NDCG, the paired-bootstrap
 95% interval of the MRR change, MRR by question type (single fact / multi-passage / paraphrased), latency and whether the
 top score separates answerable questions from unanswerable ones. Prompt formats for the decision models were chosen
-on the tune set; the test set was run once with the chosen formats.
+on the tune set; the test set was run once with the chosen format (other formats were run on it afterwards only to diagnose).
 
-| Test set, hybrid, 20 candidates | MRR@10 | MRR change (95% CI) | NDCG@10 | Multi-passage MRR | Paraphrase MRR | p50 latency |
+| All 48 questions, hybrid, 20 candidates | MRR@10 | vs bge (95% CI) | Tune MRR | Test MRR | Runs on | p50 / question |
 |---|---|---|---|---|---|---|
-| no rerank | 0.729 | — | 0.767 | 0.583 | 0.350 | — |
-| **`bge-reranker-base`** (278M, ONNX, CPU) | **0.922** | **+0.193 (+0.089 ~ +0.302)** | **0.919** | **1.000** | **0.800** | 0.9 s |
-| `Qwen3-Reranker-0.6B` (Q8, llama.cpp, CPU) | 0.799 | +0.069 (−0.066 ~ +0.198) | 0.848 | 0.833 | 0.717 | 14.5 s |
-| Julia-1 (144M decision model, CPU) | 0.080 | −0.650 (−0.795 ~ −0.500) | 0.137 | 0.083 | 0.073 | 2.1 s |
-| Laya (421M decision model, CPU) | 0.203 | −0.526 (−0.710 ~ −0.332) | 0.262 | 0.778 | 0.167 | 17.4 s |
+| no rerank | 0.707 | −0.171 (−0.259 ~ −0.076) | 0.684 | 0.729 | — | — |
+| **`bge-reranker-base`** (278M cross-encoder, ONNX) | **0.878** | — | 0.833 | **0.922** | CPU | **0.8 s** |
+| Kev-4B (decision model, Q4, `choice` format) | 0.840 | −0.037 (−0.142 ~ +0.063) | **0.910** | 0.771 | GPU | 1.9 s |
+| local LLM (`qwen3.5:4b`, scores all 20 in one call) | 0.830 | −0.048 (−0.137 ~ +0.045) | 0.797 | 0.862 | GPU | 10.7 s |
+| `Qwen3-Reranker-0.6B` (Q8, llama.cpp) | 0.788 | −0.090 (−0.147 ~ −0.039) | 0.777 | 0.799 | CPU | 14.6 s |
+| Laya (421M decision model, `doc` format) | 0.24 | far below | 0.283 | 0.203 | CPU | 17 s |
+| Julia-1 (144M decision model, `choice` format) | 0.16 | far below | 0.244 | 0.080 | CPU | 2.1 s |
+| `bge-reranker-base`, **50** candidates | 0.899 | +0.021 vs 20 | 0.875 | 0.924 | CPU | 2.0 s |
 
-<sub>24 test questions (16 fact, 3 multi-passage, 5 paraphrase). The tune set gave the same order (bge +0.149, CI +0.004 ~ +0.287;
-Qwen3 +0.092, CI includes 0; both decision models below no rerank with every prompt format tried). On the PDF/PPTX set the first stage
-is already at MRR 0.962 and no reranker improves it (bge −0.038, CI −0.115 ~ 0). Latency was measured while other programs used the CPU;
-compare the columns with each other, not with the earlier tables. Kev-4B and the LLM backend need the GPU and have not been run yet.</sub>
+<sub>48 questions = 24 tune + 24 test (30 fact, 8 multi-passage, 10 paraphrase). The bootstrap resamples questions, so the
+interval is the uncertainty from having only 48. On the PDF/PPTX set the first stage is already at MRR 0.962 and nothing improves it
+(bge 0.923, Kev 0.962). Latencies are comparable with each other only; other programs shared the machine during some runs.</sub>
 
-- **Open decision models do not work as zero-shot rerankers here.** Julia-1 and Laya rank the gold passage below random. Checking the
-  raw scores, Laya gives almost every real 300–600 character passage 0.6–0.9 for "does this passage answer the question?", and
-  Julia-1 inverts its ranking when the question is rephrased. They are built for choosing between short labels, not for reading a
-  passage against a question; a decision model would fit better as the classifier in the decision layer (a separate experiment).
-- **Qwen3-Reranker is not better than the smaller bge model on this corpus** and is 16× slower on CPU. Its scores saturate near 1.0
-  for many candidates, which costs it on multi-passage questions.
-- **Rerank scores separate answerable from unanswerable questions** (top-score AUROC 1.00 for both cross-encoders vs 0.93 for the
-  first stage), but there are only 3 unanswerable test questions, so this is a hint for a future cut-off, not evidence for one.
+- **The default stays `bge-reranker-base` with 20 candidates.** Nothing is significantly better, and it is the only option that is
+  both the most accurate and runs on CPU without competing with the generation model for the 8 GB GPU. 50 candidates gain 0.02 MRR,
+  inside the 0.04 run-to-run noise, for 2.4× the time.
+- **Kev-4B ties with bge; the tune-set "win" was noise.** It led on the tune set (0.910 vs 0.833, but the interval included 0) and lost
+  on the test set with all three prompt formats (0.77–0.84 vs 0.92). Choosing a format on 24 questions over-fits.
+- **The small open decision models do not work as zero-shot rerankers.** Julia-1 and Laya rank the gold passage below random: Laya gives
+  almost every real 300–600 character passage 0.6–0.9 for "can this passage answer the question?", and Julia-1 inverts its ranking
+  when the question is rephrased. They are built for picking between short labels; they would fit better as the classifier in the
+  decision layer (a separate experiment).
+- **Qwen3-Reranker is significantly worse than the smaller bge model here** and 17× slower on CPU; its scores saturate near 1.0 for
+  many candidates.
+- **llama.cpp's decision-model server is young.** After roughly a thousand requests the Kev server stopped answering while holding the
+  GPU at 100%; the evaluation restarts it and resumes from the score cache. Worth re-checking before relying on it.
+- **Rerank scores separate answerable from unanswerable questions** (top-score AUROC 0.98–1.00 vs 0.80 for the first stage), but there
+  are only 6 unanswerable questions, so this is a hint for a future cut-off, not evidence for one.
 
 ### End to end (test set)
 

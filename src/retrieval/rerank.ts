@@ -168,7 +168,7 @@ export function llmReranker(model = config.llmModel): Reranker {
         properties: { scores: { type: "array", items: { type: "integer", enum: [0, 1, 2, 3] }, minItems: docs.length, maxItems: docs.length } },
         required: ["scores"],
       };
-      const r = await llmJson<{ scores: number[] }>(LLM_SYSTEM, `問題：${query}\n\n${body}\n\n依序回傳 ${docs.length} 個片段的分數。`, schema, { model, numPredict: 20 + docs.length * 4 });
+      const r = await llmJson<{ scores: number[] }>(LLM_SYSTEM, `問題：${query}\n\n${body}\n\n依序回傳 ${docs.length} 個片段的分數。`, schema, { model, numPredict: 60 + docs.length * 10 });
       // 同分時保留原本的順序：加一點點依原排名遞減的值
       return docs.map((_, i) => (r.scores?.[i] ?? 0) - i * 1e-4);
     },
