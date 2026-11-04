@@ -16,3 +16,12 @@ results/
 Thumbs.db
 # 只在本機測試用的文件（含個資，不上傳）
 corpus-local/
+
+# planning notes stay local
+PLAN.md
+PLANS.md
+plan.md
+*-plan.md
+*_plan.md
+plans/
+docs/plan.md
