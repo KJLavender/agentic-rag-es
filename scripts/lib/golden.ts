@@ -13,7 +13,11 @@ export interface Question {
   type?: "fact" | "multi" | "paraphrase";
   groups?: string[];
   points: string[];
-  evidence: { doc: string; text: string }[];
+  /**
+   * 標準答案在哪：text = 原文裡的一句話（包含它的片段就算命中）；
+   * 答案只在圖片裡時改用 page + image（這頁的圖片內容片段就算命中，見 src/ingest/vision.ts）。
+   */
+  evidence: { doc: string; text?: string; page?: number; image?: boolean }[];
   /** SOP 題：原文應有的步驟數。 */
   steps?: number;
 }
@@ -50,12 +54,15 @@ export function loadGolden(split: Split, path = goldenPath()): { questions: Ques
 /** 比對前去掉 * 和 `、合併空白（跟 golden.json 的 evidence 一樣的正規化）。 */
 export const normalize = (s: string) => s.replace(/[*`]/g, "").replace(/\s+/g, " ");
 
-/** 每題的相關片段 = 內容包含任一 evidence.text 的片段。 */
+/**
+ * 每題的相關片段 = 內容包含任一 evidence.text 的片段，或 evidence 指定頁面的圖片內容片段。
+ * 圖片題在沒開看圖（VISION_PAGES=off）的索引裡找不到相關片段，算全部漏掉，不報錯。
+ */
 export async function relevantIds(es: Client, questions: Question[]): Promise<Map<string, Set<string>>> {
   const res = await es.search<ChunkDoc>({
     index: config.esIndex,
     size: 5000,
-    _source: ["chunk_id", "doc_id", "content"],
+    _source: ["chunk_id", "doc_id", "content", "page", "kind"],
     query: { match_all: {} },
   });
   const chunks = res.hits.hits.map((h) => h._source!);
@@ -63,9 +70,13 @@ export async function relevantIds(es: Client, questions: Question[]): Promise<Ma
   for (const q of questions) {
     const ids = new Set<string>();
     for (const e of q.evidence) {
-      for (const c of chunks) if (c.doc_id === e.doc && normalize(c.content).includes(e.text)) ids.add(c.chunk_id);
+      for (const c of chunks) {
+        if (c.doc_id !== e.doc) continue;
+        const hit = e.image ? c.kind === "image" && c.page === e.page : e.text !== undefined && normalize(c.content).includes(e.text);
+        if (hit) ids.add(c.chunk_id);
+      }
     }
-    if (!ids.size) throw new Error(`${q.id} 的 evidence 在索引裡找不到，golden set 需要更新`);
+    if (!ids.size && !q.evidence.every((e) => e.image)) throw new Error(`${q.id} 的 evidence 在索引裡找不到，golden set 需要更新`);
     out.set(q.id, ids);
   }
   return out;

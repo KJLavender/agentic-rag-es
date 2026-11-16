@@ -93,6 +93,46 @@ for (const [name, body] of [["es-backup-sop", ES_SOP], ["security-incident-sop",
   await page.pdf({ path: `${OUT}/${name}.pdf`, format: "A4", displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: footer, margin: { top: "18mm", bottom: "20mm", left: "16mm", right: "16mm" } });
   console.log(`${OUT}/${name}.pdf`);
 }
+
+// ── 機房巡檢報告：答案只在圖片裡（圖表、面板截圖、掃描頁），測頁面圖片描述（src/ingest/vision.ts）──
+// 先把 HTML 截成 PNG，再當圖片放進 PDF：PDF 裡沒有這些字的文字層，抽文字抽不到
+const shot = async (html: string, width: number, height: number) => {
+  await page.setViewportSize({ width, height });
+  await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:"Microsoft JhengHei",sans-serif}</style></head><body>${html}</body></html>`);
+  return (await page.screenshot({ type: "png" })).toString("base64");
+};
+const bar = (name: string, pct: number) =>
+  `<div style="display:flex;align-items:center;margin:14px 0"><div style="width:110px;font-size:20px">${name}</div>` +
+  `<div style="width:${pct * 5}px;height:34px;background:${pct >= 85 ? "#c0392b" : "#2e86c1"}"></div><div style="margin-left:10px;font-size:20px">${pct}%</div></div>`;
+const chart = await shot(
+  `<div style="padding:24px;width:640px;position:relative"><div style="font-size:24px;font-weight:bold;margin-bottom:12px">ES 節點磁碟使用率（10/28 量測）</div>` +
+    bar("es-node-1", 72) + bar("es-node-2", 91) + bar("es-node-3", 64) +
+    `<div style="position:absolute;left:${134 + 85 * 5}px;top:70px;height:170px;border-left:3px dashed #c0392b"></div>` +
+    `<div style="color:#c0392b;font-size:18px;margin-top:8px">紅色虛線：85% 警戒線</div></div>`,
+  700, 330,
+);
+const ups = await shot(
+  `<div style="background:#111;color:#3df58a;font-family:Consolas,monospace;padding:24px;width:560px;font-size:22px;line-height:1.7">` +
+    `UPS-A STATUS<br>輸入電壓 220V｜負載 58%<br>電池剩餘時間 42 分鐘<br>上次自我測試 2026-10-12 通過</div>`,
+  610, 230,
+);
+const scan = await shot(
+  `<div style="background:#f4f1e8;padding:40px;width:720px;height:900px;font-size:22px;line-height:2.1;transform:rotate(-1deg);filter:blur(0.4px)">` +
+    `<div style="font-size:28px;font-weight:bold;text-align:center">機房巡檢簽核表</div>` +
+    `巡檢日期：2026-10-28<br>巡檢人員：王小明（虛構）<br>異常項目：空調 CRAC-2 濾網堵塞，需於 11/7 前更換<br>` +
+    `機櫃 B-07 前門無法上鎖，已報修<br>處置建議：其餘項目正常<br>下次巡檢日期：2026-11-14<br>主管簽核：李大華（虛構）</div>`,
+  800, 980,
+);
+const INSPECTION = `<h1>機房巡檢報告（2026 年 10 月）</h1>
+<p class="meta">文件編號 OPS-DC-1028｜虛構測試文件</p>
+<p>本報告記錄 10 月份例行機房巡檢的結果。量測數據直接以監控畫面截圖附上。</p>
+<h2>1. 儲存空間</h2><img src="data:image/png;base64,${chart}" style="width:100%">
+<h2>2. 不斷電系統</h2><img src="data:image/png;base64,${ups}" style="width:80%">
+<h2 style="break-before:page">3. 巡檢簽核表（掃描）</h2><img src="data:image/png;base64,${scan}" style="width:85%">`;
+await page.setViewportSize({ width: 1280, height: 720 });
+await page.setContent(`<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><style>${css}</style></head><body>${INSPECTION}</body></html>`);
+await page.pdf({ path: `${OUT}/dc-inspection.pdf`, format: "A4", displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: footer, margin: { top: "18mm", bottom: "20mm", left: "16mm", right: "16mm" } });
+console.log(`${OUT}/dc-inspection.pdf`);
 await browser.close();
 
 // ── PPTX ──
@@ -179,6 +219,7 @@ writeFileSync(
     {
       "es-backup-sop.pdf": { title: "Elasticsearch 叢集備份與還原 SOP", acl: ["public"] },
       "security-incident-sop.pdf": { title: "資安事件通報與處理 SOP", acl: ["public"] },
+      "dc-inspection.pdf": { title: "機房巡檢報告（2026 年 10 月）", acl: ["public"] },
       "aiops-q3-review.pptx": { title: "AIOps 平台 2026 Q3 進度報告", acl: ["team"] },
     },
     null,

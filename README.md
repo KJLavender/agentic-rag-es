@@ -85,6 +85,21 @@ Results on `eval/golden-files.json`: 13 questions on generated SOP PDFs and slid
 
 Reading the answers by hand found two problems, both fixed after this run. "Which number do I call?" was treated as a procedure and padded with unrelated steps. "How do I back up Kafka?" borrowed the Elasticsearch steps instead of saying there is no such procedure. The decision step now treats single-fact questions as facts, and the SOP prompt must answer "no relevant data" when the passages lack that system's procedure. On the real PDFs the misses are a table question (the schema lives in SQL dumps that chunk poorly) and an SOP whose steps sit in two report sections.
 
+### Text inside images
+
+Screenshots, photos, scanned pages and pasted charts have no text layer, so search could not see them. Now, during ingestion, every page that contains a raster image (or almost no text) goes to a local vision model (`qwen3.5:4b` in Ollama). The model writes out only what is in the images: chart titles and numbers, text in screenshots, scanned forms. Lines that repeat the page's selectable text are dropped. What is left becomes one more chunk for that page (`kind: image`), embedded and indexed like the others. The evidence card labels it as a model description and shows the page screenshot under it, so you can check it against the original. Descriptions are cached by image hash, so re-ingesting is free. Page images only go to the local Ollama.
+
+To test this, `dc-inspection.pdf` keeps its facts only in images: a bar chart, a UPS panel screenshot and a scanned sign-off sheet. Questions f14–f17 ask about them.
+
+| `golden-files.json`, test set (17 questions + 4 traps) | Without image chunks | With image chunks |
+|---|---|---|
+| Gold passage reached the context | 76% | 100% |
+| Answer correct (judge) | 71% | 94% |
+| Image-only questions answered correctly | 0 / 4 | 3 / 4 |
+| Unsupported claims (judge) | 18% | 0% |
+
+Without image chunks, two image questions were rejected as out of scope, and the third claimed there was no date. The fourth answered from the Elasticsearch SOP instead. With image chunks, the one miss was "which equipment needs attention?". The decision step called it a procedure question, and the SOP prompt refused because the page lists items, not steps. The prompt now answers normally when the passages are about the right thing but contain no steps. Re-asked by hand, that question was answered correctly; the full run was not repeated. In that answer the 4B model also wrote that 91% is under the 85% line. The screenshot in the evidence card makes the slip easy to spot. The rule check marked one trap ("what temperature was measured?") as failed, but the answer correctly says the report has no temperature. On the three real PDFs, 64 of 97 pages received image chunks.
+
 ## Evaluation
 
 The golden set ([`eval/golden.json`](eval/golden.json)) has 48 hand-written questions based on the corpus. They are split into a tune set (looked at while developing) and a test set (never used to tune anything). It also has 14 trap questions: out of scope, direct prompt injection, injection hidden inside a document, ACL leaks, in-domain but unanswerable, and chit-chat.
@@ -146,6 +161,27 @@ What I took from it:
 - Qwen3-Reranker is significantly worse than the smaller bge model here and 17 times slower on CPU. Its scores sit near 1.0 for many candidates.
 - The llama.cpp decision-model server is young. After roughly a thousand requests the Kev server stopped answering while holding the GPU at 100%. The evaluation restarts it and resumes from the score cache. Check this before relying on it.
 - Rerank scores separate answerable from unanswerable questions (top-score AUROC 0.98-1.00 vs 0.80 for the first stage). There are only 6 unanswerable questions, so this hints at a future cut-off but does not prove one.
+
+### Fine-tuning the embedding model (did not help)
+
+Most retrieval misses come from wording: the question says "electricity bill", the document says "kWh". The usual fix is to fine-tune the embedding model on your own documents, so I tried it with the scripts in `scripts/finetune/`.
+
+- Training data: the Claude Code CLI (Sonnet) wrote three casual questions for each of 287 public chunks. It never saw the evaluation questions, and 19 generated questions that came too close to one (cosine ≥ 0.85) were dropped. The real PDFs in `corpus-local/` were not sent anywhere. That gave 783 training pairs and 59 validation pairs.
+- Training: LoRA on bge-m3's attention and dense layers (7.1M of 568M parameters), with an InfoNCE loss that uses the other chunks in the batch as negatives (`CachedMultipleNegativesRankingLoss`). Mined hard negatives were optional. Full fine-tuning does not fit in 8 GB. The result is exported to GGUF and loaded into Ollama. An untrained export gives the same vectors as Ollama's own bge-m3 (cosine 1.00000), so the export step changes nothing by itself.
+
+It made retrieval worse:
+
+| Vector search, MRR@10 | Validation (generated questions) | Tune set (my questions) |
+|---|---|---|
+| bge-m3, not fine-tuned | 0.538 | **0.743** |
+| lr 1e-4, 2 epochs, hard negatives | 0.583 | 0.584 |
+| lr 5e-5, 1 epoch | 0.566 | 0.653 |
+| lr 2e-5, 1 epoch, hard negatives | 0.543 | 0.685 |
+| lr 2e-5, 1 epoch | 0.539 | 0.706 |
+
+The better a model did on the generated questions, the worse it did on the questions I wrote. It learned how Claude phrases questions, not how people ask. The first model was also run on the test set, and it lost there too: vector MRR went from 0.764 to 0.669 and hybrid from 0.729 to 0.715, though both intervals include 0. It helped paraphrased questions (0.44 to 0.63) and hurt multi-passage ones (0.54 to 0.23). Every setting lost on the tune set, so the default stays plain bge-m3 and the test set was not run again. To make this work you would need real user questions, from logs or feedback, instead of generated ones, plus more than 24 tune questions to choose settings with.
+
+<sub>The first row of the sweep was measured in Elasticsearch after re-indexing all 427 chunks with each model. The other rows were computed in Python on the same exported chunks (`scripts/finetune/export-eval.ts`), which reproduces the Elasticsearch number for plain bge-m3 (0.743).</sub>
 
 ### End to end (test set)
 
@@ -268,6 +304,7 @@ Set these in `.env` (or the environment). Other variables such as `ES_INDEX`, `P
 | `DECISION_MIN_CONFIDENCE` | `0.5` | below this, ask the user to clarify |
 | `MAX_RETRIEVAL_ROUNDS` | `2` | extra CRAG rounds |
 | `CONTEXT_K` | `6` | passages per round |
+| `VISION_MODEL` / `VISION_PAGES` | `qwen3.5:4b` / `auto` | Ollama vision model that describes page images; which pages: `auto` (pages with images or almost no text), `all` or `off` |
 | `DOCS_DIR` | `data/docs` | originals, converted PDFs and page screenshots |
 | `MCP_URL` / `MCP_TOKEN` | unset | use Streamable HTTP instead of a stdio child process |
 
@@ -275,7 +312,7 @@ Set these in `.env` (or the environment). Other variables such as `ES_INDEX`, `P
 
 ```
 src/
-  ingest/        chunker (heading-aware, junk filter, contextual prefix) and upsert
+  ingest/        chunker (heading-aware, junk filter, contextual prefix), PDF pages, image descriptions, upsert
   retrieval/     four modes, RRF, optional rerank (cross-encoder / llama.cpp / System One / LLM)
   mcp/           MCP retrieval server (stdio / Streamable HTTP)
   agent/         decision layer, grader, CRAG pipeline, Pi generation, citation check
@@ -284,6 +321,7 @@ src/
   shared/        message types shared with the UI
 web/             React UI
 scripts/         es:setup, ingest, ask, evaluations, threshold calibration, UI smoke test
+  finetune/      training pairs from Claude CLI, LoRA fine-tuning of bge-m3, GGUF export to Ollama, comparison
 eval/            golden.json (questions, evidence sentences, traps), golden-files.json
 corpus/          bundled documents (with a prompt-injection trap)
 ```
@@ -294,7 +332,7 @@ corpus/          bundled documents (with a prompt-injection trap)
 - The 4B model sometimes mixes in Simplified characters (converted back with OpenCC), over-reads passages or misses a point. The trace panel and citation check make this visible; they do not prevent it.
 - The evaluation is small. 24 test questions on one corpus demonstrate a method; they are not a benchmark. The LLM judge is itself a model, and its notes are kept in `results/` for review.
 - One GPU, one question at a time. Other requests queue.
-- There is no OCR yet. Text inside images (screenshots pasted into a PDF, scanned pages) is not searchable, although the page screenshot still shows it.
+- Text inside images is read by a 4B vision model, not a dedicated OCR engine. It can misread small print or numbers, so image chunks are labelled and always shown next to the page screenshot. Ingesting image-heavy PDFs is slow the first time (a few seconds per page).
 - PDF tables are extracted row by row, and cells that wrap across lines can interleave. Answers about tables are less reliable than answers about prose.
 - Elasticsearch uses plain HTTP on localhost. Enable TLS before exposing it.
 - Rerank runs on CPU and adds about a second per retrieval round. Locally, the first use downloads the model (about 280 MB); the Docker image ships with it.

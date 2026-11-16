@@ -23,6 +23,10 @@ export const config = {
   llmNumCtx: num("LLM_NUM_CTX", 16384),
   llmTimeoutMs: num("LLM_TIMEOUT_MS", 120_000),
   embedModel: env("EMBED_MODEL", "bge-m3"),
+  /** 看頁面截圖、把圖片裡的文字和數字寫出來的模型（Ollama，要支援 vision）。 */
+  visionModel: env("VISION_MODEL", "qwen3.5:4b"),
+  /** 哪些頁面要看圖：auto（有圖片或幾乎沒文字的頁面）、all、off。 */
+  visionPages: env("VISION_PAGES", "auto") as "auto" | "all" | "off",
   embedDims: num("EMBED_DIMS", 1024),
 
   /** 切塊：每塊最多幾個字、相鄰兩塊重疊幾個字。 */

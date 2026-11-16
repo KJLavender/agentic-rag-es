@@ -5,7 +5,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { getDocument, type PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, OPS, type PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const pdfjsRoot = dirname(createRequire(import.meta.url).resolve("pdfjs-dist/package.json"));
 
@@ -128,4 +128,18 @@ export async function renderPdfPages(doc: PDFDocumentProxy, outDir: string, targ
     page.cleanup();
   }
   return doc.numPages;
+}
+
+const IMAGE_OPS = new Set<number>([OPS.paintImageXObject, OPS.paintInlineImageXObject, OPS.paintImageMaskXObject, OPS.paintImageXObjectRepeat]);
+
+/** 每頁畫了幾張點陣圖（截圖、照片、掃描頁、貼上的圖表）。這些內容抽不出文字，要靠看圖模型。 */
+export async function pageImageCounts(doc: PDFDocumentProxy): Promise<number[]> {
+  const out: number[] = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const ops = await page.getOperatorList();
+    out.push(ops.fnArray.filter((f) => IMAGE_OPS.has(f)).length);
+    page.cleanup();
+  }
+  return out;
 }

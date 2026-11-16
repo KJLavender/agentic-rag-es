@@ -39,6 +39,7 @@ const view = (h: Hit, layout: boolean) => ({
   ...(h.similarity !== undefined ? { similarity: Number(h.similarity.toFixed(4)) } : {}),
   ...(h.file_type ? { file_type: h.file_type } : {}),
   ...(h.page ? { page: h.page } : {}),
+  ...(h.kind === "image" ? { kind: "image" } : {}),
   ...(layout && h.layout ? { lines: h.layout.lines } : {}),
   content: h.content,
 });

@@ -11,6 +11,12 @@
       "public"
     ]
   },
+  "dc-inspection.pdf": {
+    "title": "機房巡檢報告（2026 年 10 月）",
+    "acl": [
+      "public"
+    ]
+  },
   "aiops-q3-review.pptx": {
     "title": "AIOps 平台 2026 Q3 進度報告",
     "acl": [

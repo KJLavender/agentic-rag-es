@@ -1,5 +1,5 @@
 {
-  "about": "PDF / PPTX 測試集：題目用口語問法，對應 corpus/files/ 的虛構文件。steps 是 SOP 題原文應有的步驟數，評測會檢查回答有沒有列齊。全部當驗收組，沒有拿來調任何參數。",
+  "about": "PDF / PPTX 測試集：題目用口語問法，對應 corpus/files/ 的虛構文件。steps 是 SOP 題原文應有的步驟數，評測會檢查回答有沒有列齊。f14～f17 的答案只在圖片裡（dc-inspection.pdf 的圖表、面板截圖、掃描頁），evidence 用頁碼標：這頁的圖片內容片段就算命中。全部當驗收組，沒有拿來調任何參數。",
   "questions": [
     { "id": "f01", "split": "test", "type": "multi", "question": "不小心把 Elasticsearch 的 index 刪掉了，要怎麼還原？", "steps": 7,
       "points": ["開事件單並取得 DBA 主管核准", "關閉要被覆蓋的 index 或用 rename 還原成新 index", "執行 _restore", "監看 _recovery 進度", "比對文件數驗證並請資料擁有團隊抽樣", "切換 alias", "通知相關團隊並結案", "正式環境要在每週三 22:00–24:00 維護時段"],
@@ -39,11 +39,24 @@
       "evidence": [{ "doc": "aiops-q3-review", "text": "預估 NT$ 32,000" }] },
     { "id": "f13", "split": "test", "type": "fact", "groups": ["team"], "question": "Q4 想把 MTTR 壓到多少？",
       "points": ["8 分鐘以下", "自動修復率 75%"],
-      "evidence": [{ "doc": "aiops-q3-review", "text": "MTTR 降到 8 分鐘以下" }] }
+      "evidence": [{ "doc": "aiops-q3-review", "text": "MTTR 降到 8 分鐘以下" }] },
+    { "id": "f14", "split": "test", "type": "paraphrase", "question": "哪一台 ES 節點的硬碟快滿了？",
+      "points": ["es-node-2", "91%，超過 85% 警戒線"],
+      "evidence": [{ "doc": "dc-inspection", "page": 1, "image": true }] },
+    { "id": "f15", "split": "test", "type": "paraphrase", "question": "如果停電，機房的 UPS 還能撐多久？",
+      "points": ["電池剩餘約 42 分鐘"],
+      "evidence": [{ "doc": "dc-inspection", "page": 1, "image": true }] },
+    { "id": "f16", "split": "test", "type": "fact", "question": "下一次機房巡檢是哪一天？",
+      "points": ["2026-11-14"],
+      "evidence": [{ "doc": "dc-inspection", "page": 2, "image": true }] },
+    { "id": "f17", "split": "test", "type": "paraphrase", "question": "巡檢發現機房有哪些設備要處理？",
+      "points": ["空調 CRAC-2 濾網堵塞，11/7 前更換", "機櫃 B-07 前門無法上鎖，已報修"],
+      "evidence": [{ "doc": "dc-inspection", "page": 2, "image": true }] }
   ],
   "traps": [
     { "id": "ft1", "split": "test", "kind": "acl", "question": "AIOps 平台 Q3 的平均修復時間改善了多少？", "expect": "no_leak", "forbid": ["46 分鐘", "11 分鐘"] },
     { "id": "ft2", "split": "test", "kind": "unanswerable", "question": "ES 的快照是存在哪個 Azure Blob 容器？", "expect": "no_answer" },
-    { "id": "ft3", "split": "test", "kind": "unanswerable", "question": "Kafka 叢集要怎麼備份？", "expect": "no_answer" }
+    { "id": "ft3", "split": "test", "kind": "unanswerable", "question": "Kafka 叢集要怎麼備份？", "expect": "no_answer" },
+    { "id": "ft4", "split": "test", "kind": "unanswerable", "question": "機房巡檢時量到的溫度是幾度？", "expect": "no_answer" }
   ]
 }

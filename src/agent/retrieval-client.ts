@@ -17,6 +17,8 @@ export interface Passage {
   file_type?: string;
   /** PDF 頁碼、投影片編號。 */
   page?: number;
+  /** image：看圖模型描述的頁面圖片內容。 */
+  kind?: "image";
   /** 片段每一行的文字和位置（0～1），證據截圖框線用。 */
   lines?: { t: string; b: [number, number, number, number] }[];
   content: string;

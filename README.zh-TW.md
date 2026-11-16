@@ -85,6 +85,21 @@ PPTX、DOCX 先用 LibreOffice（headless）轉成 PDF，所以所有格式都�
 
 人工檢查回答後發現兩個問題，都在這次評測之後才修。「要打哪支電話」被當成流程題，塞了不相關的步驟；「Kafka 要怎麼備份」借用了 Elasticsearch 的步驟，而不是說查不到。現在決策步驟把單一事實題判成 fact，SOP 的 prompt 也規定片段裡沒有那個系統的流程就要回答「沒有相關資料」。真實 PDF 沒答好的是一題表格題（資料表結構在 SQL dump 裡，切塊效果差）和一題步驟分散在報告兩個章節的 SOP。
 
+### 圖片裡的文字
+
+截圖、照片、掃描頁、貼上的圖表沒有文字層，原本完全搜不到。現在匯入時，有點陣圖（或幾乎沒有文字）的頁面會交給本機的看圖模型（Ollama 上的 `qwen3.5:4b`）。模型只寫出圖片裡才有的內容：圖表標題和數字、截圖裡的字、掃描的表單。跟頁面上本來就選得到的文字重複的行會被拿掉。剩下的內容變成這一頁多出來的一個片段（`kind: image`），跟其他片段一樣建 embedding 和索引。證據卡會標示這段是模型寫的描述，下面附上頁面截圖，可以自己對照原圖。描述依圖片雜湊快取，重新匯入不用重算。頁面圖片只送到本機的 Ollama。
+
+為了測這個功能，`dc-inspection.pdf` 把重點資訊全部放在圖片裡：一張長條圖、一張 UPS 面板截圖、一張掃描的簽核表。f14～f17 四題問的就是這些內容。
+
+| `golden-files.json` 驗收組（17 題 + 4 題陷阱） | 沒有圖片片段 | 有圖片片段 |
+|---|---|---|
+| 標準片段進了 context | 76% | 100% |
+| 答案正確（評審） | 71% | 94% |
+| 只在圖片裡的題目答對 | 0 / 4 | 3 / 4 |
+| 有無據內容（評審） | 18% | 0% |
+
+沒有圖片片段時，兩題圖片題被當成範圍外擋掉，第三題說查不到日期，第四題拿 Elasticsearch 的 SOP 來回答。有圖片片段後唯一答錯的是「巡檢發現機房有哪些設備要處理？」。決策步驟把它判成流程題，SOP 的 prompt 又因為那頁只列項目、沒有步驟而拒答。現在的 prompt 改成：片段講的是對的對象、只是沒有步驟時，就照一般方式回答。手動重問這題已經答對，但沒有整組重跑。那次回答裡，4B 模型還寫了「91% 未達 85% 警戒線」，證據卡上的截圖一看就知道錯了。規則判分把一題陷阱題（「量到的溫度是幾度？」）算成失敗，但回答其實正確說明報告裡沒有溫度。三份真實 PDF 共 97 頁，其中 64 頁產生了圖片片段。
+
 ## 評測
 
 Golden set（[`eval/golden.json`](eval/golden.json)）有 48 題，都是依語料手寫的。分成調整組（開發時會看）和驗收組（從來不拿來調任何參數）。另外有 14 題陷阱題：範圍外、直接 prompt injection、藏在文件裡的 injection、ACL 外洩、領域內但答案不存在、閒聊。
@@ -146,6 +161,27 @@ Hit@k 是標準片段出現在前 k 名的題目比例。MRR@10 是「第一個�
 - 在這份語料上，Qwen3-Reranker 顯著比小的 bge 模型差，在 CPU 上還慢 17 倍。它對很多候選都給接近 1.0 的分數。
 - llama.cpp 的 decision model server 還很新。Kev 的 server 大約處理一千個請求後就不再回應，GPU 卻一直維持 100%。評測會重開 server，從分數快取接著跑。真的要用之前請先再確認。
 - rerank 分數分得出「有答案」和「沒答案」的題目（最高分的 AUROC 0.98～1.00，第一段是 0.80）。但只有 6 題沒答案的題目，這只是之後設門檻的線索，還不是證據。
+
+### 微調 embedding 模型（沒有幫助）
+
+檢索漏掉的題目，大多是用詞對不上：問題說「電費」，文件寫「度電」。常見的解法是用自己的文件微調 embedding 模型，所以我用 `scripts/finetune/` 裡的腳本試了一次。
+
+- 訓練資料：用 Claude Code CLI（Sonnet）替 287 個公開片段各寫三個口語問題。它沒看過評測題；產生的問題裡有 19 題跟評測題太像（cosine ≥ 0.85），已經丟掉。`corpus-local/` 的真實 PDF 沒有送出去。最後得到 783 組訓練配對、59 組驗證配對。
+- 訓練方式：只訓練 bge-m3 attention 和 dense 層上的 LoRA（5.68 億參數裡的 710 萬），loss 是 InfoNCE，同一批的其他片段當負例（`CachedMultipleNegativesRankingLoss`），困難負例可選。全參數微調在 8GB GPU 上放不下。訓練完轉成 GGUF 放進 Ollama。沒訓練過的模型照同樣流程轉出來，向量跟 Ollama 官方的 bge-m3 完全一樣（cosine 1.00000），所以轉檔本身不會造成差異。
+
+結果反而變差：
+
+| 向量檢索 MRR@10 | 驗證集（產生的問題） | 調整組（我寫的題目） |
+|---|---|---|
+| bge-m3，沒有微調 | 0.538 | **0.743** |
+| lr 1e-4、2 個 epoch、困難負例 | 0.583 | 0.584 |
+| lr 5e-5、1 個 epoch | 0.566 | 0.653 |
+| lr 2e-5、1 個 epoch、困難負例 | 0.543 | 0.685 |
+| lr 2e-5、1 個 epoch | 0.539 | 0.706 |
+
+模型在產生的問題上越進步，在我寫的題目上就越退步。它學到的是 Claude 的出題方式，不是一般人怎麼問。第一個模型也在驗收組上跑過，同樣變差：向量 MRR 從 0.764 掉到 0.669，hybrid 從 0.729 掉到 0.715，不過兩者的信賴區間都含 0。它讓換句話說的題目進步（0.44 → 0.63），但要綜合多段的題目退步（0.54 → 0.23）。每組設定在調整組上都輸，所以預設維持原本的 bge-m3，驗收組也沒有再跑。要讓微調有用，需要真實使用者的問題（從紀錄或回饋來），而不是產生的問題；挑設定也需要比 24 題更多的調整組題目。
+
+<sub>表格第一列是把 427 個片段分別用兩個模型重建索引後，在 Elasticsearch 上量的。其他列是在 Python 裡用同一批匯出的片段算的（`scripts/finetune/export-eval.ts`），這種算法對沒微調的 bge-m3 算出來也是 0.743，跟 Elasticsearch 一致。</sub>
 
 ### 端到端（驗收組）
 
@@ -268,6 +304,7 @@ docker compose --env-file .env --env-file .env.local --profile app up -d --build
 | `DECISION_MIN_CONFIDENCE` | `0.5` | 低於就請使用者講清楚 |
 | `MAX_RETRIEVAL_ROUNDS` | `2` | CRAG 最多再查幾輪 |
 | `CONTEXT_K` | `6` | 每輪取幾個片段 |
+| `VISION_MODEL` / `VISION_PAGES` | `qwen3.5:4b` / `auto` | 描述頁面圖片的 Ollama 看圖模型；哪些頁面要看：`auto`（有圖片或幾乎沒文字的頁面）、`all`、`off` |
 | `DOCS_DIR` | `data/docs` | 原始檔、轉出的 PDF、每頁截圖 |
 | `MCP_URL` / `MCP_TOKEN` | 未設定 | 改用 Streamable HTTP，而不是 stdio 子程序 |
 
@@ -275,7 +312,7 @@ docker compose --env-file .env --env-file .env.local --profile app up -d --build
 
 ```
 src/
-  ingest/        切塊（依標題、濾掉垃圾片段、章節前綴）與 upsert
+  ingest/        切塊（依標題、濾掉垃圾片段、章節前綴）、PDF 頁面、圖片描述、upsert
   retrieval/     四種模式、RRF、選用的 rerank（cross-encoder／llama.cpp／System One／LLM）
   mcp/           MCP retrieval server（stdio / Streamable HTTP）
   agent/         決策層、評審、CRAG 流程、Pi 生成、引用查核
@@ -284,6 +321,7 @@ src/
   shared/        跟前端共用的訊息型別
 web/             React 介面
 scripts/         es:setup、ingest、ask、評測、門檻校準、網頁冒煙測試
+  finetune/      用 Claude CLI 產生訓練配對、LoRA 微調 bge-m3、轉 GGUF 放進 Ollama、比較
 eval/            golden.json（題目、證據句子、陷阱題）、golden-files.json
 corpus/          內建文件（含一份 prompt injection 陷阱）
 ```
@@ -294,7 +332,7 @@ corpus/          內建文件（含一份 prompt injection 陷阱）
 - 4B 模型偶爾會混進簡體字（用 OpenCC 轉回繁體）、過度解讀片段或漏掉重點。過程面板和引用查核讓問題看得見，但擋不住。
 - 評測規模小。單一語料、驗收組 24 題是方法示範，不是 benchmark。LLM 評審本身也是模型，它的評語都留在 `results/` 供複核。
 - 一張 GPU，一次一題，其他請求會排隊。
-- 還沒有 OCR。圖片裡的字（貼進 PDF 的截圖、掃描頁）搜尋不到，不過頁面截圖上看得到。
+- 圖片裡的字是 4B 的看圖模型讀的，不是專門的 OCR 引擎，小字或數字可能讀錯；所以圖片片段都會標示，並附上頁面截圖。圖片多的 PDF 第一次匯入會比較慢（每頁幾秒）。
 - PDF 表格是一列一列抽出來的，跨行的儲存格會交錯，問表格內容沒有問一般段落準。
 - Elasticsearch 在 localhost 上走 HTTP。對外開放前要開 TLS。
 - Rerank 在 CPU 上跑，每輪檢索多約 1 秒。本機第一次使用會下載模型（約 280 MB）；Docker image 已經內建。

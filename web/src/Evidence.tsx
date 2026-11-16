@@ -79,12 +79,14 @@ export function EvidenceCard({ p, n, answer, open, onToggle }: { p: Passage; n: 
       <button className="ev-head" onClick={onToggle}>
         <span className="num">{n}</span>
         <span className="ev-type">{TYPE_LABEL[p.file_type ?? "md"] ?? p.file_type}</span>
+        {p.kind === "image" && <span className="ev-type">圖片內容</span>}
         <span className="source-title">{p.title}</span>
         <span className="muted">› {where}</span>
         <span className="muted id">{p.id}</span>
       </button>
       {open && (
         <div className="ev-body">
+          {p.kind === "image" && <div className="ev-note">這段是看圖模型讀頁面截圖寫的文字，不是原文；請對照下面的截圖確認。</div>}
           <div className="ev-quote">
             {p.lines?.length
               ? p.lines.map((l, i) => (

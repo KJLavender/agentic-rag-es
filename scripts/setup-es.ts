@@ -4,6 +4,7 @@
  *
  *   npm run es:setup             # 索引不存在才建
  *   npm run es:setup -- --recreate   # 刪掉重建（換 embedding 模型、改 mapping 時）
+ *   ES_INDEX=rag-chunks-ft npm run es:setup -- --no-keys   # 只建實驗用的 index，沿用現有的 key（key 涵蓋 rag-chunks-*）
  */
 import { Client } from "@elastic/elasticsearch";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -23,12 +24,16 @@ if (!(await es.indices.exists({ index: config.esIndex }))) {
   await es.indices.create({ index: config.esIndex, ...indexDefinition(config.embedDims) });
   console.log(`已建立 ${config.esIndex}（dims=${config.embedDims}）`);
 } else {
-  console.log(`${config.esIndex} 已存在`);
+  // 已存在：補上新加的欄位（例如 kind）。只能新增欄位，改既有欄位的型別要 --recreate
+  await es.indices.putMapping({ index: config.esIndex, properties: indexDefinition(config.embedDims).mappings!.properties! });
+  console.log(`${config.esIndex} 已存在，mapping 已更新`);
 }
+
+if (process.argv.includes("--no-keys")) process.exit(0);
 
 const keys: Record<string, { name: string; privileges: string[] }> = {
   ES_INGEST_API_KEY: { name: "rag-ingest", privileges: ["read", "write", "view_index_metadata", "maintenance"] },
-  // MCP retrieval server 用：只能讀這一個 index
+  // MCP retrieval server 用：只能讀（這組 index）
   ES_SEARCH_API_KEY: { name: "rag-search", privileges: ["read"] },
 };
 
@@ -41,11 +46,12 @@ for (const [envName, k] of Object.entries(keys)) {
   const res = await es.security.createApiKey({
     name: k.name,
     role_descriptors: {
-      [k.name]: { cluster: [], indices: [{ names: [config.esIndex], privileges: k.privileges }] },
+      // 「index-*」是同一份語料的實驗版本（例如換 embedding 模型的 rag-chunks-ft），權限一樣只到這一組 index
+      [k.name]: { cluster: [], indices: [{ names: [config.esIndex, `${config.esIndex}-*`], privileges: k.privileges }] },
     },
   });
   lines.push(`${envName}=${res.encoded}`);
-  console.log(`已發 ${k.name}：${k.privileges.join(", ")} on ${config.esIndex}`);
+  console.log(`已發 ${k.name}：${k.privileges.join(", ")} on ${config.esIndex}、${config.esIndex}-*`);
 }
 writeFileSync(".env.local", lines.join("\n") + "\n");
 console.log("API key 已寫入 .env.local（不進 git）");

@@ -28,6 +28,8 @@ export interface ChunkDoc {
   page?: number;
   /** 片段裡每一行的文字和在頁面上的位置（0～1），給證據截圖框線用；不建索引。 */
   layout?: { lines: { t: string; b: [number, number, number, number] }[] };
+  /** text：抽出來的文字；image：看圖模型描述的頁面圖片內容（src/ingest/vision.ts）。沒寫的舊片段當 text。 */
+  kind?: "text" | "image";
 }
 
 export function indexDefinition(dims: number): Omit<estypes.IndicesCreateRequest, "index"> {
@@ -62,6 +64,7 @@ export function indexDefinition(dims: number): Omit<estypes.IndicesCreateRequest
         file_type: { type: "keyword" },
         page: { type: "integer" },
         layout: { type: "object", enabled: false },
+        kind: { type: "keyword" },
       },
     },
   };

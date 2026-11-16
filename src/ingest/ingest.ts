@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config.js";
 import { embed } from "../embed.js";
@@ -6,7 +6,8 @@ import { esClient, type ChunkDoc } from "../es/index.js";
 import { chunkMarkdown, contextualText, docIdFrom, hash, parseDocument } from "./chunk.js";
 import { chunkPages, type PageChunk } from "./page-chunk.js";
 import { officeToPdf } from "./office.js";
-import { openPdf, readPdfPages, renderPdfPages } from "./pdf.js";
+import { openPdf, pageImageCounts, readPdfPages, renderPdfPages } from "./pdf.js";
+import { describePage, needsVision } from "./vision.js";
 
 export interface IngestResult {
   docId: string;
@@ -15,6 +16,8 @@ export interface IngestResult {
   embedded: number;
   removed: number;
   pages?: number;
+  /** 有幾頁的圖片內容被看圖模型描述成片段。 */
+  imagePages?: number;
 }
 
 export const FILE_TYPES = ["md", "txt", "pdf", "pptx", "docx"] as const;
@@ -122,19 +125,53 @@ export async function ingestFile(data: Buffer, fileName: string, meta: FileMeta)
     writeFileSync(join(dir, "meta.json"), JSON.stringify({ docId, title, fileName, fileType: ext, pages: pages.length }, null, 2));
 
     const chunks: PageChunk[] = chunkPages(pages, ext === "pdf" ? "page" : "slide", config.chunkMaxChars);
-    const res = await upsert(
-      { docId, title: String(title), source: meta.source ?? fileName, acl: meta.acl, fileType: ext },
-      chunks.map((c, i) => ({
-        heading_path: c.headingPath,
-        content: c.content,
-        position: i,
-        page: c.page,
-        layout: { lines: c.lines.map((l) => ({ t: l.text, b: l.box })) },
-      })),
-    );
-    return { ...res, pages: pages.length };
+    const textChunks: ChunkInput[] = chunks.map((c, i) => ({
+      heading_path: c.headingPath,
+      content: c.content,
+      position: i,
+      page: c.page,
+      layout: { lines: c.lines.map((l) => ({ t: l.text, b: l.box })) },
+    }));
+    const imageChunks = await describeImagePages(doc, pages, dir, String(title), ext === "pdf" ? "第 # 頁" : "投影片 #", textChunks.length);
+    const res = await upsert({ docId, title: String(title), source: meta.source ?? fileName, acl: meta.acl, fileType: ext }, [...textChunks, ...imageChunks]);
+    return { ...res, pages: pages.length, imagePages: imageChunks.length };
   } finally {
     await doc.loadingTask.destroy();
   }
 }
 
+
+/**
+ * 有圖片（或幾乎沒文字）的頁面交給看圖模型，把圖片裡的文字和數字寫成這頁的額外片段。
+ * 模型沒開、出錯時只印警告：文字片段照樣匯入，不讓整份文件失敗。
+ */
+async function describeImagePages(
+  doc: Awaited<ReturnType<typeof openPdf>>,
+  pages: Awaited<ReturnType<typeof readPdfPages>>,
+  dir: string,
+  title: string,
+  pageLabel: string,
+  startPosition: number,
+): Promise<ChunkInput[]> {
+  if (config.visionPages === "off") return [];
+  const images = await pageImageCounts(doc);
+  const out: ChunkInput[] = [];
+  for (const p of pages) {
+    const pageText = p.lines.map((l) => l.text).join("\n");
+    if (config.visionPages === "auto" && !needsVision(images[p.page - 1] ?? 0, pageText)) continue;
+    try {
+      const text = await describePage({ image: readFileSync(join(dir, `p${p.page}.jpg`)), pageText, title, page: p.page });
+      if (!text) continue;
+      out.push({
+        heading_path: `${pageLabel.replace("#", String(p.page))}｜圖片內容（模型描述）`,
+        content: text,
+        position: startPosition + out.length,
+        page: p.page,
+        kind: "image",
+      });
+    } catch (err) {
+      console.warn(`[vision] ${title} 第 ${p.page} 頁看圖失敗，只匯入文字：${(err as Error).message}`);
+    }
+  }
+  return out;
+}

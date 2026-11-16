@@ -23,6 +23,7 @@ export interface Hit {
   file_type?: string;
   page?: number;
   layout?: ChunkDoc["layout"];
+  kind?: ChunkDoc["kind"];
 }
 
 export interface SearchParams {
@@ -35,7 +36,7 @@ export interface SearchParams {
   rerank?: boolean;
 }
 
-const SOURCE: (keyof ChunkDoc)[] = ["chunk_id", "doc_id", "title", "source", "heading_path", "content", "position", "file_type", "page", "layout"];
+const SOURCE: (keyof ChunkDoc)[] = ["chunk_id", "doc_id", "title", "source", "heading_path", "content", "position", "file_type", "page", "layout", "kind"];
 
 /** ACL 一律在查詢裡過濾；沒有群組就只有 public。 */
 export function aclFilter(groups: string[]): estypes.QueryDslQueryContainer {

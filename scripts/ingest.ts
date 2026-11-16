@@ -16,7 +16,7 @@ let files = 0;
 const started = Date.now();
 
 const report = (r: IngestResult) =>
-  console.log(`${r.docId.padEnd(30)} ${String(r.chunks).padStart(3)} 塊（新算 ${r.embedded}，刪除 ${r.removed}${r.pages ? `，${r.pages} 頁` : ""}）  ${r.title}`);
+  console.log(`${r.docId.padEnd(30)} ${String(r.chunks).padStart(3)} 塊（新算 ${r.embedded}，刪除 ${r.removed}${r.pages ? `，${r.pages} 頁` : ""}${r.imagePages ? `，${r.imagePages} 頁圖片內容` : ""}）  ${r.title}`);
 
 for (const dir of dirs.filter(existsSync)) {
   const metaPath = join(dir, "_meta.json");

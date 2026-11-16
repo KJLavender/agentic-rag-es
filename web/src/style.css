@@ -142,6 +142,7 @@ label.check.inline { display: inline-flex; margin-right: 8px; }
 .ev-head .num { color: #fff; background: var(--accent); border-radius: 4px; padding: 0 6px; font-weight: 600; }
 .ev-head .id { margin-left: auto; font-size: 11px; }
 .ev-type { font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+.ev-note { grid-column: 1 / -1; font-size: 12px; color: var(--muted); border-left: 3px solid var(--line); padding: 2px 8px; margin-bottom: 8px; }
 .ev-body { padding: 4px 12px 12px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .ev-body:has(.shot) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
 .ev-body:not(:has(.shot)) { grid-template-columns: 1fr; }
